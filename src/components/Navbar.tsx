@@ -26,7 +26,7 @@ export default function Navbar() {
     { to: '/polishing', icon: 'fa-wrench', label: '打磨' },
     { to: '/shop', icon: 'fa-store', label: '商城' },
     { to: '/toolcraft', icon: 'fa-layer-group', label: '合成' },
-    { to: '/market', icon: 'fa-shopping-bag', label: '交易所' },
+    { to: '/market', icon: 'fa-mask', label: '黑市' },
     { to: '/quests', icon: 'fa-clipboard-list', label: '任务' },
     { to: '/collection', icon: 'fa-book', label: '图鉴' },
   ];

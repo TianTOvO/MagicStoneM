@@ -1,167 +1,191 @@
-import { useContext } from 'react';
-import { Link } from 'react-router-dom';
+import { useContext, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { UserDataContext } from '@/contexts/userDataContext';
-import { STONE_GRADE_COLORS, STONE_GRADE_NAMES, TOOL_LEVEL_COLORS, TOOL_LEVEL_NAMES, getStoneDisplayName } from '@/types';
+import { STONE_GRADE_COLORS, TOOL_LEVEL_COLORS, TOOL_LEVEL_NAMES, getStoneDisplayName, getStoneGradeLabel } from '@/types';
 import { motion } from 'framer-motion';
 
 export default function HomePage() {
   const { userData } = useContext(UserDataContext);
+  const navigate = useNavigate();
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  const stats = {
-    totalStones: userData.stones.length,
-    totalTools: userData.tools.length,
-    coins: userData.coins,
-    activeQuests: userData.quests.filter(q => q.progress < q.target).length,
-    completedQuests: userData.quests.filter(q => q.progress >= q.target).length,
-    highestStoneGrade: userData.stones.length > 0
-      ? STONE_GRADE_NAMES[Math.max(...userData.stones.map(s => s.grade))]
-      : '无',
-    discoveredCount: (() => {
-      const grades = new Set(userData.stones.map(s => `${s.grade}-${s.subGrade}`));
-      return grades.size;
-    })(),
-  };
+  const polishableCount = userData.stones.filter(
+    s => (s.damage ?? 0) < (s.damageLimit ?? 1) && s.grade < 3
+  ).length;
+  const usableTools = userData.tools.filter(t => t.durability > 0).length;
+  const completedQuests = userData.quests.filter(
+    q => q.progress >= q.target && !q.claimed
+  ).length;
 
-  const cardHover = 'hover:scale-105 hover:shadow-2xl transition-all duration-150';
-  const featureHover = 'hover:-translate-y-2 hover:shadow-2xl transition-all duration-150';
+  const stats = [
+    { icon: 'fa-gem', color: 'from-blue-400 to-cyan-400', bg: 'from-blue-50 to-cyan-50', border: 'border-blue-200', value: userData.stones.length, label: '矿石' },
+    { icon: 'fa-wrench', color: 'from-green-400 to-emerald-400', bg: 'from-green-50 to-emerald-50', border: 'border-green-200', value: usableTools, label: '工具' },
+    { icon: 'fa-clipboard-list', color: 'from-orange-400 to-amber-400', bg: 'from-orange-50 to-amber-50', border: 'border-orange-200', value: completedQuests, label: '可领奖' },
+  ];
+
+  // Merge stones + tools sorted by acquiredAt (newest first)
+  const recentItems = [
+    ...userData.stones.map(s => ({ ...s, _type: 'stone' as const })),
+    ...userData.tools.map(t => ({ ...t, _type: 'tool' as const })),
+  ]
+    .filter(item => (item._type === 'stone' ? item.acquiredAt : true))
+    .sort((a, b) => {
+      const aTime = a._type === 'stone' ? (a.acquiredAt ?? 0) : 0;
+      const bTime = b._type === 'stone' ? (b.acquiredAt ?? 0) : 0;
+      return bTime - aTime;
+    })
+    .slice(0, 8);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
+      {/* Hero area */}
       <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="bg-gradient-to-r from-blue-50 via-purple-50 to-pink-50 rounded-2xl p-8 border-2 border-purple-200 shadow-xl"
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.4 }}
+        className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-700 p-6 shadow-xl shadow-purple-500/20"
       >
-        <h1 className="text-4xl font-black mb-3 bg-clip-text text-transparent bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600">
-          ✨ 欢迎来到原石狂磨
-        </h1>
-        <p className="text-gray-700 text-lg font-medium">开始你的矿石打磨之旅，收集、打磨、交易，成为传奇工匠！</p>
+        {/* Decorative background gems */}
+        <div className="absolute top-3 right-4 opacity-20">
+          <i className="fas fa-gem text-7xl text-white rotate-12" />
+        </div>
+        <div className="absolute bottom-2 left-8 opacity-10">
+          <i className="fas fa-gem text-5xl text-white -rotate-12" />
+        </div>
+
+        <div className="relative z-10">
+          <p className="text-purple-200 text-xs font-medium mb-1">欢迎回来，工匠</p>
+          <h1 className="text-2xl font-black text-white mb-2">原石狂磨</h1>
+          <p className="text-purple-200 text-xs leading-relaxed max-w-[70%]">
+            打磨矿石，探索收藏，成为传奇工匠
+          </p>
+
+          {/* Balance highlight */}
+          <div className="mt-4 inline-flex items-center gap-2 bg-white/15 backdrop-blur-sm rounded-2xl px-4 py-2 border border-white/10">
+            <i className="fas fa-coins text-yellow-300 text-sm" />
+            <span className="text-white font-black text-lg">{userData.coins}</span>
+            <span className="text-purple-200 text-xs">游戏币</span>
+          </div>
+        </div>
       </motion.div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0, type: "tween", duration: 0.15 }}
-          className={`bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl p-5 border-2 border-blue-300 shadow-lg ${cardHover}`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-gray-700 text-sm font-bold">我的矿石</h3>
-            <motion.i className="fas fa-gem text-blue-600 text-xl" animate={{ rotate: [0, 10, -10, 0] }} transition={{ duration: 2, repeat: Infinity }} />
-          </div>
-          <p className="text-3xl font-black text-blue-700">{stats.totalStones}</p>
-          <p className="text-xs text-blue-600 mt-1 font-semibold">最高: {stats.highestStoneGrade} | 发现 {stats.discoveredCount}/10</p>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1, type: "tween", duration: 0.15 }}
-          className={`bg-gradient-to-br from-green-50 to-emerald-100 rounded-2xl p-5 border-2 border-green-300 shadow-lg ${cardHover}`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-gray-700 text-sm font-bold">打磨工具</h3>
-            <motion.i className="fas fa-tools text-green-600 text-xl" animate={{ rotate: [0, -15, 15, 0] }} transition={{ duration: 2, repeat: Infinity }} />
-          </div>
-          <p className="text-3xl font-black text-green-700">{stats.totalTools}</p>
-          <p className="text-xs text-green-600 mt-1 font-semibold">可用于打磨和合成</p>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, type: "tween", duration: 0.15 }}
-          className={`bg-gradient-to-br from-yellow-50 to-amber-100 rounded-2xl p-5 border-2 border-yellow-300 shadow-lg ${cardHover}`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-gray-700 text-sm font-bold">游戏币</h3>
-            <motion.i className="fas fa-coins text-yellow-600 text-xl" animate={{ y: [0, -5, 0] }} transition={{ duration: 1.5, repeat: Infinity }} />
-          </div>
-          <p className="text-3xl font-black text-yellow-700">{stats.coins}</p>
-          <p className="text-xs text-yellow-600 mt-1 font-semibold">商城和市场使用</p>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, type: "tween", duration: 0.15 }}
-          className={`bg-gradient-to-br from-purple-50 to-purple-100 rounded-2xl p-5 border-2 border-purple-300 shadow-lg ${cardHover}`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-gray-700 text-sm font-bold">任务进度</h3>
-            <motion.i className="fas fa-tasks text-purple-600 text-xl" animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 2, repeat: Infinity }} />
-          </div>
-          <p className="text-3xl font-black text-purple-700">{stats.completedQuests}/{userData.quests.length}</p>
-          <p className="text-xs text-purple-600 mt-1 font-semibold">待完成: {stats.activeQuests}</p>
-        </motion.div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { to: '/polishing', icon: 'fa-wrench', color: 'blue', title: '开始打磨', desc: '打磨矿石，提升等级和价值' },
-          { to: '/shop', icon: 'fa-store', color: 'purple', title: '商城购物', desc: '购买矿石和工具' },
-          { to: '/market', icon: 'fa-shopping-bag', color: 'amber', title: '交易所', desc: '自由买卖矿石和工具' },
-          { to: '/collection', icon: 'fa-book', color: 'indigo', title: '矿石图鉴', desc: '探索收集所有矿石品种' },
-        ].map(item => (
+      {/* Stat chips */}
+      <div className="grid grid-cols-3 gap-3">
+        {stats.map((stat, i) => (
           <motion.div
-            key={item.to}
-            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4, type: "tween", duration: 0.15 }}
-            className={`bg-gradient-to-br from-${item.color}-50 to-${item.color}-100 rounded-2xl p-5 border-2 border-${item.color}-300 cursor-pointer shadow-lg ${featureHover}`}
+            key={stat.label}
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 + i * 0.05, duration: 0.3 }}
+            className={`bg-gradient-to-br ${stat.bg} rounded-2xl p-3 border ${stat.border} text-center`}
           >
-            <Link to={item.to} className="h-full flex flex-col justify-between group">
-              <div>
-                <i className={`fas ${item.icon} text-4xl text-${item.color}-600 mb-3`} />
-                <h3 className="text-xl font-black text-gray-800 mb-1">{item.title}</h3>
-                <p className="text-gray-700 text-sm font-medium">{item.desc}</p>
-              </div>
-              <div className={`mt-3 text-${item.color}-600 text-sm font-bold flex items-center group-hover:translate-x-1.5 transition-transform duration-150`}>
-                前往 <i className="fas fa-arrow-right ml-1.5"></i>
-              </div>
-            </Link>
+            <i className={`fas ${stat.icon} bg-clip-text text-transparent bg-gradient-to-br ${stat.color} text-lg mb-1 block`} />
+            <p className="text-lg font-black text-gray-800">{stat.value}</p>
+            <p className="text-[10px] text-gray-500 font-medium">{stat.label}</p>
           </motion.div>
         ))}
       </div>
 
-      {/* Recent assets */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-black text-gray-800">最近资产</h2>
-          <Link to="/inventory" className="text-blue-600 hover:text-blue-700 font-bold flex items-center text-sm transition-colors">
-            查看全部 <i className="fas fa-chevron-right ml-1.5 text-xs"></i>
-          </Link>
-        </div>
+      {/* Primary CTA: Polish */}
+      <motion.button
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25 }}
+        onClick={() => navigate('/polishing')}
+        className="w-full py-4 bg-gradient-to-r from-purple-600 via-pink-500 to-orange-500 rounded-2xl text-white font-black text-base shadow-lg shadow-purple-500/30 active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
+      >
+        <i className="fas fa-gem text-lg" />
+        <span>开始打磨</span>
+        {polishableCount > 0 && (
+          <span className="bg-white/20 rounded-full px-2 py-0.5 text-xs">{polishableCount} 可打磨</span>
+        )}
+      </motion.button>
 
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
-          {userData.stones.slice(0, 3).map((stone) => (
-            <motion.div
-              key={stone.id}
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl p-4 border-2 border-blue-300 shadow-md hover:scale-105 hover:rotate-3 hover:shadow-xl transition-all duration-150"
-            >
-              <div className="relative h-20 flex items-center justify-center mb-3">
-                <div className={`absolute inset-0 rounded-full ${STONE_GRADE_COLORS[stone.grade]} opacity-20 blur-xl`} />
-                <i className="fas fa-gem text-4xl text-blue-600 relative" />
-              </div>
-              <h4 className="text-center font-bold text-gray-800 text-xs truncate">{getStoneDisplayName(stone.grade, stone.subGrade)}</h4>
-              <p className="text-center text-gray-600 text-xs mt-1 font-semibold">{stone.damage}/{stone.damageLimit}</p>
-            </motion.div>
-          ))}
-          {userData.tools.slice(0, 2).map((tool) => (
-            <motion.div
-              key={tool.id}
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-gradient-to-br from-green-50 to-emerald-100 rounded-2xl p-4 border-2 border-green-300 shadow-md hover:scale-105 hover:-rotate-3 hover:shadow-xl transition-all duration-150"
-            >
-              <div className="relative h-20 flex items-center justify-center mb-3">
-                <div className={`absolute inset-0 rounded-full ${TOOL_LEVEL_COLORS[tool.level]} opacity-20 blur-xl`} />
-                <i className="fas fa-wrench text-4xl text-green-600 relative" />
-              </div>
-              <h4 className="text-center font-bold text-gray-800 text-xs">{TOOL_LEVEL_NAMES[tool.level]}工具</h4>
-              <p className="text-center text-gray-600 text-xs mt-1 font-semibold">{tool.durability}/{tool.durabilityMax}</p>
-            </motion.div>
-          ))}
-        </div>
+      {/* Secondary CTAs */}
+      <div className="grid grid-cols-2 gap-3">
+        {[
+          { path: '/shop', icon: 'fa-store', label: '商城', desc: '买矿石和工具', color: 'from-emerald-500 to-green-500', shadow: 'shadow-emerald-500/20' },
+          { path: '/inventory', icon: 'fa-box-open', label: '背包', desc: '查看我的资产', color: 'from-blue-500 to-cyan-500', shadow: 'shadow-blue-500/20' },
+        ].map((btn, i) => (
+          <motion.button
+            key={btn.path}
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 + i * 0.05 }}
+            onClick={() => navigate(btn.path)}
+            className={`bg-gradient-to-br ${btn.color} rounded-2xl p-4 text-white text-left shadow-lg ${btn.shadow} active:scale-[0.98] transition-transform`}
+          >
+            <i className={`fas ${btn.icon} text-xl mb-2 block`} />
+            <p className="font-black text-sm">{btn.label}</p>
+            <p className="text-white/70 text-[10px]">{btn.desc}</p>
+          </motion.button>
+        ))}
       </div>
+
+      {/* Quick access grid — 2x2 */}
+      <div className="grid grid-cols-2 gap-3">
+        {[
+          { path: '/quests', icon: 'fa-clipboard-list', label: '任务', desc: '完成任务获奖励', color: 'from-amber-500 to-orange-500', bg: 'bg-amber-50', border: 'border-amber-200' },
+          { path: '/toolcraft', icon: 'fa-layer-group', label: '合成', desc: '3合1升级工具', color: 'from-orange-500 to-red-500', bg: 'bg-orange-50', border: 'border-orange-200' },
+          { path: '/collection', icon: 'fa-book', label: '图鉴', desc: '矿石品种收集', color: 'from-indigo-500 to-purple-500', bg: 'bg-indigo-50', border: 'border-indigo-200' },
+          { path: '/shop', icon: 'fa-mask', label: '黑市', desc: '神秘商人交易', color: 'from-purple-500 to-pink-500', bg: 'bg-purple-50', border: 'border-purple-200' },
+        ].map((item, i) => (
+          <motion.button
+            key={item.path}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 + i * 0.05 }}
+            onClick={() => navigate(item.path)}
+            className={`${item.bg} rounded-2xl p-4 border ${item.border} text-left active:scale-[0.97] transition-transform shadow-sm`}
+          >
+            <div className={`bg-gradient-to-br ${item.color} w-10 h-10 rounded-xl flex items-center justify-center mb-2`}>
+              <i className={`fas ${item.icon} text-white text-sm`} />
+            </div>
+            <p className="font-black text-sm text-gray-800">{item.label}</p>
+            <p className="text-[10px] text-gray-500 mt-0.5">{item.desc}</p>
+          </motion.button>
+        ))}
+      </div>
+
+      {/* Recent items — horizontal scroll */}
+      {recentItems.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-black text-gray-800">最近获得</h3>
+          </div>
+          <div
+            ref={scrollRef}
+            className="flex gap-3 overflow-x-auto hide-scrollbar pb-2 -mx-3 px-3"
+          >
+            {recentItems.map((item, i) => (
+              <motion.div
+                key={`${item._type}-${item.id}`}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.4 + i * 0.04 }}
+                className="flex-shrink-0 w-20 bg-white rounded-2xl p-3 border border-purple-100 shadow-sm text-center"
+              >
+                <div className="relative h-14 flex items-center justify-center mb-1">
+                  <div className={`absolute inset-0 rounded-full ${
+                    item._type === 'stone'
+                      ? STONE_GRADE_COLORS[(item as any).grade]
+                      : TOOL_LEVEL_COLORS[(item as any).level]
+                  } opacity-15 blur-md`} />
+                  <i className={`fas ${item._type === 'stone' ? 'fa-gem' : 'fa-wrench'} text-xl ${
+                    item._type === 'stone' ? 'text-blue-500' : 'text-green-500'
+                  }`} />
+                </div>
+                <p className="text-[10px] font-bold text-gray-700 truncate">
+                  {item._type === 'stone'
+                    ? getStoneDisplayName((item as any).grade, (item as any).subGrade)
+                    : TOOL_LEVEL_NAMES[(item as any).level]
+                  }
+                </p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,10 +1,11 @@
 import { useContext, useState } from 'react';
 import { UserDataContext } from '@/contexts/userDataContext';
-import { Quest, QUEST_TYPE_INFO } from '@/types';
-import { motion } from 'framer-motion';
+import { QUEST_TYPE_INFO } from '@/types';
+import type { Quest } from '@/types';
+import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 
-const mockQuests: Quest[] = [
+const QUEST_LIST: Quest[] = [
   { id: 1, type: '日常', title: '打磨5次矿石', description: '使用打磨工具打磨任意矿石5次', progress: 0, target: 5, reward: 100 },
   { id: 2, type: '日常', title: '收集3块玛瑙', description: '通过打磨或购买获得3块玛瑙等级的矿石', progress: 0, target: 3, reward: 200 },
   { id: 3, type: '成就', title: '首次打磨成功', description: '成功将一块原石升级为玛瑙', progress: 0, target: 1, reward: 50 },
@@ -15,209 +16,188 @@ const mockQuests: Quest[] = [
 
 export default function QuestsPage() {
   const { userData, updateUserData } = useContext(UserDataContext);
-  const [activeTab, setActiveTab] = useState<'all' | 'daily' | 'achievement' | 'treasure' | 'team'>('all');
-  const [showPuzzleModal, setShowPuzzleModal] = useState(false);
-  const [currentPuzzle, setCurrentPuzzle] = useState<Quest | null>(null);
+  const [filter, setFilter] = useState<'all' | 'daily' | 'achievement' | 'treasure' | 'team'>('all');
+  const [puzzleModal, setPuzzleModal] = useState<Quest | null>(null);
   const [puzzleAnswer, setPuzzleAnswer] = useState('');
 
-  const tabLabels: { key: typeof activeTab; label: string; icon: string }[] = [
-    { key: 'all', label: '全部', icon: 'fa-list' },
-    { key: 'daily', label: '日常', icon: 'fa-calendar-day' },
-    { key: 'achievement', label: '成就', icon: 'fa-trophy' },
-    { key: 'treasure', label: '寻宝', icon: 'fa-map-marked-alt' },
-    { key: 'team', label: '团队', icon: 'fa-users' },
-  ];
-
-  const typeMap: Record<string, typeof activeTab> = {
+  const typeMap: Record<string, typeof filter> = {
     '日常': 'daily', '成就': 'achievement', '寻宝': 'treasure', '团队': 'team',
   };
 
-  const filteredQuests = activeTab === 'all'
-    ? mockQuests
-    : mockQuests.filter(q => typeMap[q.type] === activeTab);
+  const filtered = filter === 'all'
+    ? QUEST_LIST
+    : QUEST_LIST.filter(q => typeMap[q.type] === filter);
 
   const handleClaim = (quest: Quest) => {
-    if (quest.isPuzzle) {
-      setCurrentPuzzle(quest);
-      setShowPuzzleModal(true);
-      return;
-    }
-
-    const userQuest = userData.quests.find(q => q.id === quest.id);
-    if (!userQuest || userQuest.progress < userQuest.target) {
-      toast.error('任务尚未完成');
-      return;
-    }
-    if (userQuest.claimed) {
-      toast.error('奖励已领取');
-      return;
-    }
-
+    if (quest.isPuzzle) { setPuzzleModal(quest); return; }
+    const uq = userData.quests.find(q => q.id === quest.id);
+    if (!uq || uq.progress < uq.target) { toast.error('任务尚未完成'); return; }
+    if (uq.claimed) { toast.error('奖励已领取'); return; }
     updateUserData({
       coins: userData.coins + quest.reward,
-      quests: userData.quests.map(q =>
-        q.id === quest.id ? { ...q, claimed: true } : q
-      ),
+      quests: userData.quests.map(q => q.id === quest.id ? { ...q, claimed: true } : q),
     });
     toast.success(`获得 ${quest.reward} 游戏币！`);
   };
 
   const handlePuzzleSubmit = () => {
-    if (!currentPuzzle) return;
-    const correctAnswers = ['原石', '原石狂磨', '魔法石', 'magic stone', '矿石'];
-    if (correctAnswers.includes(puzzleAnswer.trim())) {
-      const newStone = {
-        id: Date.now(),
-        grade: 0,
-        subGrade: 0,
-        damage: 0,
-        damageLimit: 150 + Math.floor(Math.random() * 51),
-        mysterious: true,
-        isPolishable: true,
-        acquiredAt: Date.now(),
-      };
-
+    if (!puzzleModal) return;
+    const answers = ['原石', '原石狂磨', '魔法石', 'magic stone', '矿石'];
+    if (answers.includes(puzzleAnswer.trim())) {
       updateUserData({
-        stones: [...userData.stones, newStone],
-        coins: userData.coins + currentPuzzle.reward,
-        quests: userData.quests.map(q =>
-          q.id === currentPuzzle.id ? { ...q, progress: q.target } : q
-        ),
+        stones: [...userData.stones, {
+          id: Date.now(), grade: 0, subGrade: 0, damage: 0,
+          damageLimit: 150 + Math.floor(Math.random() * 51),
+          mysterious: true, isPolishable: true, acquiredAt: Date.now(),
+        }],
+        coins: userData.coins + puzzleModal.reward,
+        quests: userData.quests.map(q => q.id === puzzleModal.id ? { ...q, progress: q.target } : q),
       });
-      toast.success(`恭喜！你解开了谜题，获得了${currentPuzzle.reward}游戏币和一块神秘矿石！`);
-      setShowPuzzleModal(false);
+      toast.success(`谜题解开！获得${puzzleModal.reward}游戏币和神秘矿石！`);
+      setPuzzleModal(null);
     } else {
       toast.error('答案不对，再想想？');
     }
   };
 
-  return (
-    <div className="space-y-6">
-      <motion.div
-        initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
-        className="bg-gradient-to-r from-blue-50 via-purple-50 to-pink-50 rounded-2xl p-8 border-2 border-purple-200 shadow-xl"
-      >
-        <h1 className="text-4xl font-black mb-2 bg-clip-text text-transparent bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600">📋 任务中心</h1>
-        <p className="text-gray-700 text-lg font-medium">完成任务获取游戏币和稀有矿石奖励</p>
-      </motion.div>
+  const filters = [
+    { key: 'all' as const, label: '全部', icon: 'fa-list' },
+    { key: 'daily' as const, label: '日常', icon: 'fa-calendar-day' },
+    { key: 'achievement' as const, label: '成就', icon: 'fa-trophy' },
+    { key: 'treasure' as const, label: '寻宝', icon: 'fa-map-marked-alt' },
+    { key: 'team' as const, label: '团队', icon: 'fa-users' },
+  ];
 
-      {/* Tabs */}
-      <div className="flex gap-2 overflow-x-auto pb-2">
-        {tabLabels.map(tab => (
-          <button key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all ${
-              activeTab === tab.key
-                ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+  const completedCount = userData.quests.filter(q => q.progress >= q.target && !q.claimed).length;
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-black text-gray-800">
+          <i className="fas fa-clipboard-list text-amber-500 mr-2" />任务中心
+        </h2>
+        {completedCount > 0 && (
+          <span className="bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full">
+            {completedCount} 可领
+          </span>
+        )}
+      </div>
+
+      {/* Filter chips */}
+      <div className="flex gap-1.5 overflow-x-auto hide-scrollbar pb-1">
+        {filters.map(f => (
+          <button
+            key={f.key}
+            onClick={() => setFilter(f.key)}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
+              filter === f.key
+                ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md'
+                : 'bg-white text-gray-500 border border-gray-200'
             }`}
           >
-            <i className={`fas ${tab.icon} mr-1.5`}></i>{tab.label}
+            <i className={`fas ${f.icon} mr-1`} />{f.label}
           </button>
         ))}
       </div>
 
       {/* Quest list */}
-      <div className="space-y-4">
-        {filteredQuests.map((quest, i) => {
-          const userQuest = userData.quests.find(q => q.id === quest.id);
-          const progress = userQuest?.progress ?? 0;
-          const claimed = userQuest?.claimed ?? false;
-          const done = progress >= quest.target;
-          const typeInfo = QUEST_TYPE_INFO[quest.type];
+      {filtered.map((quest, i) => {
+        const uq = userData.quests.find(q => q.id === quest.id);
+        const progress = uq?.progress ?? 0;
+        const claimed = uq?.claimed ?? false;
+        const done = progress >= quest.target;
+        const typeInfo = QUEST_TYPE_INFO[quest.type];
 
-          return (
-            <motion.div key={quest.id}
-              initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.08 }}
-              className={`rounded-2xl p-5 border-2 shadow-lg ${
-                claimed ? 'bg-gray-50 border-gray-200 opacity-60' :
-                done ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300' :
-                'bg-white border-gray-200'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-xl ${typeInfo.color} flex items-center justify-center text-white text-lg`}>
-                    <i className={`fas fa-${typeInfo.icon}`}></i>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${typeInfo.color} text-white`}>{quest.type}</span>
-                      <h3 className="font-bold text-gray-800">{quest.title}</h3>
-                    </div>
-                    <p className="text-sm text-gray-600">{quest.description}</p>
-                  </div>
-                </div>
-                <div className="text-right flex-shrink-0 ml-4">
-                  <p className="font-bold text-amber-600">
-                    <i className="fas fa-coins text-amber-500 mr-1"></i>{quest.reward}
-                  </p>
-                  {quest.isPuzzle && !claimed && (
-                    <button onClick={() => handleClaim(quest)}
-                      className="mt-2 px-4 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm font-bold rounded-lg hover:scale-105 transition-all"
-                    >
-                      解开谜题
-                    </button>
-                  )}
-                  {!quest.isPuzzle && !claimed && (
-                    <button onClick={() => handleClaim(quest)}
-                      disabled={!done}
-                      className={`mt-2 px-4 py-1.5 text-sm font-bold rounded-lg transition-all ${
-                        done
-                          ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:scale-105'
-                          : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      }`}
-                    >
-                      {done ? '领取奖励' : `${progress}/${quest.target}`}
-                    </button>
-                  )}
-                  {claimed && (
-                    <span className="text-sm text-gray-400 font-bold mt-2 block">
-                      <i className="fas fa-check-circle mr-1"></i>已领取
-                    </span>
-                  )}
-                </div>
-              </div>
-              {!quest.isPuzzle && !claimed && (
-                <div className="mt-3 w-full bg-gray-200 rounded-full h-2">
-                  <div className={`h-2 rounded-full ${done ? 'bg-green-500' : 'bg-blue-500'}`}
-                    style={{ width: `${Math.min(100, (progress / quest.target) * 100)}%` }} />
-                </div>
-              )}
-            </motion.div>
-          );
-        })}
-      </div>
-
-      {/* Puzzle Modal */}
-      {showPuzzleModal && currentPuzzle && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          onClick={() => setShowPuzzleModal(false)}
-        >
-          <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }}
-            className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-6 max-w-md w-full border-2 border-purple-300 shadow-2xl"
-            onClick={e => e.stopPropagation()}
+        return (
+          <motion.div
+            key={quest.id}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.06 }}
+            className={`rounded-2xl p-4 border-2 ${
+              claimed ? 'bg-gray-50 border-gray-200 opacity-50' :
+              done ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200' :
+              'bg-white border-gray-200'
+            }`}
           >
-            <h3 className="text-2xl font-bold text-gray-800 mb-2">🔍 寻宝谜题</h3>
-            <p className="text-gray-700 mb-4">{currentPuzzle.description}</p>
-            <input type="text" value={puzzleAnswer}
-              onChange={e => setPuzzleAnswer(e.target.value)}
-              placeholder="输入你的答案..."
-              className="w-full border-2 border-purple-300 rounded-xl px-4 py-3 text-gray-800 mb-4 focus:border-purple-500 focus:outline-none"
-            />
-            <div className="flex gap-3">
-              <button onClick={() => setShowPuzzleModal(false)}
-                className="flex-1 py-3 bg-gray-300 rounded-xl font-bold"
-              >取消</button>
-              <button onClick={handlePuzzleSubmit}
-                className="flex-1 py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl text-white font-bold shadow-lg"
-              >提交答案</button>
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl ${typeInfo.color} flex items-center justify-center text-white flex-shrink-0`}>
+                <i className={`fas fa-${typeInfo.icon} text-sm`} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${typeInfo.color} text-white`}>{quest.type}</span>
+                  <h4 className="text-sm font-bold text-gray-800 truncate">{quest.title}</h4>
+                </div>
+                <p className="text-[10px] text-gray-500 line-clamp-1">{quest.description}</p>
+                {!quest.isPuzzle && !claimed && (
+                  <div className="mt-1.5 w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                    <div className={`h-full rounded-full ${done ? 'bg-green-500' : 'bg-blue-500'}`}
+                      style={{ width: `${Math.min(100, (progress / quest.target) * 100)}%` }} />
+                  </div>
+                )}
+              </div>
+              <div className="text-right flex-shrink-0">
+                <p className="text-xs font-bold text-amber-600">
+                  <i className="fas fa-coins text-amber-500 text-[10px] mr-0.5" />{quest.reward}
+                </p>
+                {claimed ? (
+                  <span className="text-[10px] text-gray-400 font-bold">已领取</span>
+                ) : quest.isPuzzle ? (
+                  <button onClick={() => handleClaim(quest)}
+                    className="mt-1 px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold rounded-lg active:scale-90 transition-transform"
+                  >解开谜题</button>
+                ) : (
+                  <button onClick={() => handleClaim(quest)}
+                    disabled={!done}
+                    className={`mt-1 px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${
+                      done ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white active:scale-90' :
+                      'bg-gray-200 text-gray-400'
+                    }`}
+                  >{done ? '领取' : `${progress}/${quest.target}`}</button>
+                )}
+              </div>
             </div>
           </motion.div>
-        </motion.div>
-      )}
+        );
+      })}
+
+      {/* Puzzle modal */}
+      <AnimatePresence>
+        {puzzleModal && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-end justify-center"
+            onClick={() => setPuzzleModal(null)}
+          >
+            <motion.div
+              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+              className="bg-white rounded-t-3xl p-6 pb-20 w-full max-w-lg safe-area-bottom"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-4" />
+              <h3 className="text-lg font-black text-gray-800 mb-2">🔍 寻宝谜题</h3>
+              <p className="text-sm text-gray-600 mb-4">{puzzleModal.description}</p>
+              <input
+                type="text" value={puzzleAnswer}
+                onChange={e => setPuzzleAnswer(e.target.value)}
+                placeholder="输入你的答案..."
+                className="w-full border-2 border-purple-200 rounded-xl px-4 py-3 text-sm mb-4 focus:border-purple-500 focus:outline-none"
+              />
+              <div className="flex gap-3">
+                <button onClick={() => setPuzzleModal(null)}
+                  className="flex-1 py-3 bg-gray-200 rounded-2xl font-bold text-sm active:scale-95 transition-transform"
+                >取消</button>
+                <button onClick={handlePuzzleSubmit}
+                  className="flex-1 py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl text-white font-bold text-sm active:scale-95 transition-transform"
+                >提交答案</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

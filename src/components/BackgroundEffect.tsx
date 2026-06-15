@@ -11,20 +11,14 @@ interface Particle {
   rotationSpeed: number;
 }
 
-const PARTICLE_COUNT = 100;
-const CONNECTION_DIST = 180;
-const MOUSE_ATTRACT_RADIUS = 220;
-const MOUSE_ATTRACT_FORCE = 0.04;
-const SHOCKWAVE_RADIUS = 120;
-const SHOCKWAVE_FORCE = 0.05;
-const SHOCKWAVE_DURATION = 800; // ms
+const PARTICLE_COUNT = 45;
+const CONNECTION_DIST = 130;
+const BASE_SPEED = 0.7;
 
 export default function BackgroundEffect() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const mouseRef = useRef({ x: -1000, y: -1000 });
   const particlesRef = useRef<Particle[]>([]);
   const animRef = useRef<number>(0);
-  const shockwaveRef = useRef({ x: 0, y: 0, time: 0 });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -39,105 +33,58 @@ export default function BackgroundEffect() {
     resize();
     window.addEventListener('resize', resize);
 
-    // Initialize particles
+    // Initialize particles with stable speeds
     const particles: Particle[] = [];
     for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = BASE_SPEED * (0.7 + Math.random() * 0.6);
       const shapes = ['circle', 'triangle', 'diamond'] as const;
       particles.push({
         x: Math.random() * canvas.width,
         y: Math.random() * canvas.height,
-        vx: (Math.random() - 0.5) * 0.6,
-        vy: (Math.random() - 0.5) * 0.6,
-        size: 5 + Math.random() * 5,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        size: 4 + Math.random() * 4,
         shape: shapes[Math.floor(Math.random() * shapes.length)],
         rotation: Math.random() * Math.PI * 2,
-        rotationSpeed: (Math.random() - 0.5) * 0.02,
+        rotationSpeed: (Math.random() - 0.5) * 0.015,
       });
     }
     particlesRef.current = particles;
 
-    // Mouse tracking
-    const onMouseMove = (e: MouseEvent) => {
-      mouseRef.current = { x: e.clientX, y: e.clientY };
-    };
-    const onMouseLeave = () => {
-      mouseRef.current = { x: -1000, y: -1000 };
-    };
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseleave', onMouseLeave);
-
-    // Double-click shockwave
-    const onDblClick = (e: MouseEvent) => {
-      shockwaveRef.current = { x: e.clientX, y: e.clientY, time: performance.now() };
-    };
-    window.addEventListener('dblclick', onDblClick);
-
-    // Animation loop
+    // Animation loop — constant speed, gentle direction wobble
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const { x: mx, y: my } = mouseRef.current;
-      const mouseActive = mx > 0 && my > 0;
-      const now = performance.now();
-      const shockwave = shockwaveRef.current;
-      const shockElapsed = now - shockwave.time;
-      const shockActive = shockElapsed < SHOCKWAVE_DURATION;
 
-      // Draw shockwave ring
-      if (shockActive && shockwave.time > 0) {
-        const progress = shockElapsed / SHOCKWAVE_DURATION;
-        const ringRadius = progress * SHOCKWAVE_RADIUS;
-        ctx.beginPath();
-        ctx.arc(shockwave.x, shockwave.y, ringRadius, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(96, 165, 250, ${0.5 * (1 - progress)})`; // light blue, fading
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      }
-
-      // Update & draw particles
       for (const p of particles) {
-        // Shockwave repulsion (overrides mouse attraction)
-        if (shockActive && shockwave.time > 0) {
-          const sdx = p.x - shockwave.x;
-          const sdy = p.y - shockwave.y;
-          const sdist = Math.sqrt(sdx * sdx + sdy * sdy);
-          if (sdist < SHOCKWAVE_RADIUS && sdist > 1) {
-            const force = (1 - shockElapsed / SHOCKWAVE_DURATION) * (1 - sdist / SHOCKWAVE_RADIUS);
-            p.vx += (sdx / sdist) * force * SHOCKWAVE_FORCE;
-            p.vy += (sdy / sdist) * force * SHOCKWAVE_FORCE;
-          }
-        } else if (mouseActive) {
-          // Mouse attraction (only when no active shockwave)
-          const dx = mx - p.x;
-          const dy = my - p.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < MOUSE_ATTRACT_RADIUS && dist > 0) {
-            const force = (MOUSE_ATTRACT_RADIUS - dist) / MOUSE_ATTRACT_RADIUS;
-            p.vx += (dx / dist) * force * MOUSE_ATTRACT_FORCE;
-            p.vy += (dy / dist) * force * MOUSE_ATTRACT_FORCE;
-          }
-        }
-
-        // Move
+        // Move at constant speed — no damping
         p.x += p.vx;
         p.y += p.vy;
         p.rotation += p.rotationSpeed;
 
-        // Damping
-        p.vx *= 0.995;
-        p.vy *= 0.995;
+        // Gentle random direction wobble (avoids perfectly straight lines)
+        const angle = Math.atan2(p.vy, p.vx);
+        const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+        const wobble = (Math.random() - 0.5) * 0.04;
+        const newAngle = angle + wobble;
+        const targetSpeed = BASE_SPEED * (0.8 + Math.random() * 0.4);
+        // Slowly pull toward target speed (auto-correct drift)
+        const blended = speed + (targetSpeed - speed) * 0.002;
+        p.vx = Math.cos(newAngle) * blended;
+        p.vy = Math.sin(newAngle) * blended;
 
-        // Wrap around edges
-        if (p.x < -20) p.x = canvas.width + 20;
-        if (p.x > canvas.width + 20) p.x = -20;
-        if (p.y < -20) p.y = canvas.height + 20;
-        if (p.y > canvas.height + 20) p.y = -20;
+        // Bounce off edges
+        if (p.x < 0) { p.x = 0; p.vx = Math.abs(p.vx); }
+        if (p.x > canvas.width) { p.x = canvas.width; p.vx = -Math.abs(p.vx); }
+        if (p.y < 0) { p.y = 0; p.vy = Math.abs(p.vy); }
+        if (p.y > canvas.height) { p.y = canvas.height; p.vy = -Math.abs(p.vy); }
 
         // Draw shape
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(p.rotation);
-        ctx.fillStyle = 'rgba(147, 51, 234, 0.25)'; // purple
-        ctx.strokeStyle = 'rgba(59, 130, 246, 0.3)'; // blue
+        ctx.fillStyle = 'rgba(147, 51, 234, 0.25)';
+        ctx.strokeStyle = 'rgba(59, 130, 246, 0.3)';
         ctx.lineWidth = 1;
 
         const s = p.size;
@@ -166,7 +113,7 @@ export default function BackgroundEffect() {
         ctx.restore();
       }
 
-      // Draw connections
+      // Draw connections between particles
       for (let i = 0; i < particles.length; i++) {
         for (let j = i + 1; j < particles.length; j++) {
           const dx = particles[i].x - particles[j].x;
@@ -174,37 +121,11 @@ export default function BackgroundEffect() {
           const dist = Math.sqrt(dx * dx + dy * dy);
           if (dist < CONNECTION_DIST) {
             const opacity = (1 - dist / CONNECTION_DIST) * 0.5;
-            ctx.strokeStyle = `rgba(99, 102, 241, ${opacity})`; // indigo
+            ctx.strokeStyle = `rgba(99, 102, 241, ${opacity})`;
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(particles[i].x, particles[i].y);
             ctx.lineTo(particles[j].x, particles[j].y);
-            ctx.stroke();
-          }
-        }
-      }
-
-      // Mouse connection lines — only when mouse is active AND no shockwave
-      if (mouseActive && !shockActive) {
-        for (const p of particles) {
-          const dx = mx - p.x;
-          const dy = my - p.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < CONNECTION_DIST) {
-            const opacity = (1 - dist / CONNECTION_DIST) * 0.45;
-            // Glow layer
-            ctx.strokeStyle = `rgba(245, 158, 11, ${opacity * 0.3})`; // amber glow
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.moveTo(mx, my);
-            ctx.lineTo(p.x, p.y);
-            ctx.stroke();
-            // Core line
-            ctx.strokeStyle = `rgba(245, 158, 11, ${opacity})`; // amber
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.moveTo(mx, my);
-            ctx.lineTo(p.x, p.y);
             ctx.stroke();
           }
         }
@@ -217,9 +138,6 @@ export default function BackgroundEffect() {
     return () => {
       cancelAnimationFrame(animRef.current);
       window.removeEventListener('resize', resize);
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseleave', onMouseLeave);
-      window.removeEventListener('dblclick', onDblClick);
     };
   }, []);
 

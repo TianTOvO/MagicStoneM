@@ -10,21 +10,66 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Prevent pull-to-refresh on mobile */
+  overscroll-behavior: none;
+  /* Tap highlight */
+  -webkit-tap-highlight-color: transparent;
+  /* Prevent text selection during gameplay */
+  -webkit-user-select: none;
+  user-select: none;
 }
 
+/* Dynamic viewport height fallback */
+.h-dvh {
+  height: 100vh;
+  height: 100dvh;
+}
+
+/* Safe area insets */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Hide scrollbar but keep functionality */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Custom scrollbar — thinner for mobile */
 ::-webkit-scrollbar {
-  width: 5px;
+  width: 3px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f3f4f6;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #94a3b8;
-  border-radius: 5px;
+  background: #c4b5d1;
+  border-radius: 3px;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
+/* Smooth momentum scroll on iOS */
+.overflow-y-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent zoom on double-tap */
+button, a, input, select, textarea {
+  touch-action: manipulation;
+}
+
+/* Active state for touch feedback */
+@media (hover: none) {
+  button:active {
+    opacity: 0.8;
+  }
 }
