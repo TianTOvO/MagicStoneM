@@ -1,6 +1,6 @@
 import { useContext } from 'react';
 import { UserDataContext } from '@/contexts/userDataContext';
-import { buildCollection, ALL_ORE_COMBINATIONS, type CollectionEntry } from '@/types';
+import { buildCollection, ALL_ORE_COMBINATIONS, type CollectionEntry, STONE_GRADE_TEXT_COLORS, getMarketReferencePrice } from '@/types';
 import { motion } from 'framer-motion';
 
 function formatTime(ts: number): string {
@@ -10,7 +10,7 @@ function formatTime(ts: number): string {
 
 export default function CollectionPage() {
   const { userData } = useContext(UserDataContext);
-  const collection = buildCollection(userData.stones);
+  const collection = buildCollection(userData.stones, userData.discoveredOres);
   const discovered = collection.filter(e => e.discovered).length;
   const total = ALL_ORE_COMBINATIONS.length;
   const pct = Math.round((discovered / total) * 100);
@@ -55,8 +55,8 @@ export default function CollectionPage() {
             }`}
           >
             <div className="relative h-20 flex items-center justify-center mb-2">
-              <div className={`absolute inset-0 rounded-full ${entry.color} opacity-15 blur-xl`} />
-              <i className={`fas fa-gem text-4xl ${entry.discovered ? 'text-white' : 'text-gray-300'}`} />
+              <div className={`absolute inset-0 rounded-full ${entry.color} opacity-30 blur-xl`} />
+              <i className={`fas fa-gem text-4xl ${entry.discovered ? STONE_GRADE_TEXT_COLORS[entry.grade] : 'text-gray-300'}`} />
               <div className="absolute top-0 right-0">
                 {entry.discovered ? (
                   <span className="text-[9px] bg-emerald-100 text-emerald-700 rounded-full px-1.5 py-0.5 font-bold">✓</span>
@@ -69,11 +69,17 @@ export default function CollectionPage() {
             <p className="text-[10px] text-gray-400 text-center mt-0.5">{entry.label}</p>
             <p className="text-[10px] text-gray-500 text-center mt-1 line-clamp-2">{entry.description || '——'}</p>
             {entry.discovered && (
-              <div className="flex items-center justify-center gap-3 mt-2 pt-2 border-t border-gray-100">
-                <span className="text-[10px] text-gray-500">×{entry.count}</span>
-                {entry.acquiredAt && (
-                  <span className="text-[10px] text-gray-400">{formatTime(entry.acquiredAt)}</span>
-                )}
+              <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
+                <div className="flex items-center justify-center gap-3">
+                  <span className="text-[10px] text-gray-500">×{entry.count}</span>
+                  {entry.acquiredAt && (
+                    <span className="text-[10px] text-gray-400">{formatTime(entry.acquiredAt)}</span>
+                  )}
+                </div>
+                <p className="text-center text-[10px] text-amber-600 font-medium">
+                  <i className="fas fa-coins text-amber-400 mr-0.5" />
+                  参考 {getMarketReferencePrice(entry.grade, entry.subGrade).toLocaleString()} 币
+                </p>
               </div>
             )}
           </motion.div>

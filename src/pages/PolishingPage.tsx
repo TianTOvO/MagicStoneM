@@ -1,6 +1,6 @@
 import { useContext, useState, useRef, useEffect } from 'react';
 import { UserDataContext } from '@/contexts/userDataContext';
-import { STONE_GRADE_COLORS, TOOL_LEVEL_COLORS, TOOL_LEVEL_NAMES, getStoneDisplayName, rollSubGrade, isStonePolishable } from '@/types';
+import { STONE_GRADE_COLORS, STONE_GRADE_TEXT_COLORS, TOOL_LEVEL_COLORS, TOOL_LEVEL_NAMES, getStoneDisplayName, rollSubGrade, isStonePolishable } from '@/types';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -219,7 +219,7 @@ export default function PolishingPage() {
                 <i className="fas fa-gem text-7xl text-purple-400" />
               </motion.div>
             ) : (
-              <i className="fas fa-gem text-7xl text-white drop-shadow-lg" />
+              <i className={`fas fa-gem text-7xl drop-shadow-lg ${STONE_GRADE_TEXT_COLORS[selectedStone?.grade ?? 0]}`} />
             )}
           </motion.div>
 

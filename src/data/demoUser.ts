@@ -22,6 +22,12 @@ export const mockUserData: UserData = {
     { id: 10, level: 2, durability: 100, durabilityMax: 100, lossCoeff: 0.5, durabilityConsumption: 0.5 },
   ],
   coins: 1000,
+  discoveredOres: {
+    '0-0': Date.now() - 86400000 * 10,
+    '1-0': Date.now() - 86400000 * 5,
+    '2-3': Date.now() - 86400000 * 3,
+    '3-4': Date.now() - 86400000,
+  },
   quests: [
     { id: 1, type: '日常', title: '打磨5次矿石', progress: 0, target: 5, reward: 100 },
     { id: 2, type: '日常', title: '收集3块玛瑙', progress: 0, target: 3, reward: 200 },

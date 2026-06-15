@@ -1,6 +1,6 @@
 import { useContext, useState } from 'react';
 import { UserDataContext } from '@/contexts/userDataContext';
-import { STONE_GRADE_COLORS, STONE_GRADE_NAMES, TOOL_LEVEL_COLORS, TOOL_LEVEL_NAMES, getStoneDisplayName, getStoneGradeLabel } from '@/types';
+import { STONE_GRADE_COLORS, STONE_GRADE_NAMES, STONE_GRADE_TEXT_COLORS, TOOL_LEVEL_COLORS, TOOL_LEVEL_NAMES, getStoneDisplayName, getStoneGradeLabel } from '@/types';
 import { motion } from 'framer-motion';
 
 export default function InventoryPage() {
@@ -109,8 +109,8 @@ export default function InventoryPage() {
                   }`}
                 >
                   <div className="relative h-24 flex items-center justify-center mb-3">
-                    <div className={`absolute inset-0 rounded-full ${STONE_GRADE_COLORS[stone.grade]} opacity-15 blur-xl`} />
-                    <i className={`fas fa-gem text-5xl ${isFull ? 'text-gray-400' : 'text-white'}`} />
+                    <div className={`absolute inset-0 rounded-full ${STONE_GRADE_COLORS[stone.grade]} opacity-30 blur-xl`} />
+                    <i className={`fas fa-gem text-5xl ${isFull ? 'text-gray-400' : STONE_GRADE_TEXT_COLORS[stone.grade]}`} />
                     {stone.mysterious && (
                       <span className="absolute top-0 right-0 text-[9px] bg-purple-500 text-white rounded-full px-1.5 py-0.5 font-bold">
                         神秘

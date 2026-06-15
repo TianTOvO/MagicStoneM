@@ -63,6 +63,19 @@ export default function App() {
   const updateUserData = useCallback((newData: Partial<UserData>) => {
     setUserData((prev: UserData) => {
       const next = { ...prev, ...newData };
+
+      // Auto-record newly discovered ore types into permanent collection
+      if (newData.stones) {
+        const discovered = { ...(next.discoveredOres || prev.discoveredOres || {}) };
+        for (const s of newData.stones) {
+          const key = `${s.grade}-${s.subGrade}`;
+          if (!discovered[key]) {
+            discovered[key] = s.acquiredAt ?? Date.now();
+          }
+        }
+        next.discoveredOres = discovered;
+      }
+
       saveUserData(next);
       return next;
     });
@@ -100,7 +113,7 @@ export default function App() {
 
             <ResourceHUD />
 
-            <main className="flex-1 overflow-y-auto overflow-x-hidden relative z-10 pb-16">
+            <main className="flex-1 overflow-y-auto overflow-x-hidden pb-16">
               <div className="px-3 pt-3 pb-2">
                 <Routes>
                   <Route path="/" element={<HomePage />} />

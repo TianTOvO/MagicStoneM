@@ -44,6 +44,8 @@ export interface UserData {
   tools: Tool[];
   coins: number;
   quests: Quest[];
+  /** 永久图鉴解锁记录：key = "grade-subGrade", value = 首次发现时间戳 */
+  discoveredOres: Record<string, number>;
 }
 
 // Market types — matches Market.sol
@@ -203,9 +205,26 @@ export const ALL_ORE_COMBINATIONS: { grade: number; subGrade: number }[] = [
   { grade: 3, subGrade: 4 },
 ];
 
-/** 根据用户拥有的矿石列表构建图鉴数据 */
-export function buildCollection(stones: Stone[]): CollectionEntry[] {
-  // Group stones by grade+subGrade, track earliest acquisition
+/** 黑市参考价（商城卖价，仅供参考） */
+export const MARKET_REFERENCE_PRICE: Record<string, number> = {
+  '0-0': 70,      // 原石
+  '1-0': 560,     // 玛瑙
+  '2-1': 1050,    // 糯种翡翠
+  '2-2': 1540,    // 冰种翡翠
+  '2-3': 2450,    // 玻璃种翡翠
+  '2-4': 3850,    // 帝王绿翡翠
+  '3-1': 5600,    // 普通钻石
+  '3-2': 8400,    // 蓝钻
+  '3-3': 12600,   // 粉钻
+  '3-4': 21000,   // 非洲之心
+};
+
+/** 获取矿石的市场参考价 */
+export function getMarketReferencePrice(grade: number, subGrade: number): number {
+  return MARKET_REFERENCE_PRICE[`${grade}-${subGrade}`] ?? 0;
+}
+export function buildCollection(stones: Stone[], discoveredOres: Record<string, number> = {}): CollectionEntry[] {
+  // Group current stones by grade+subGrade
   const groups: Record<string, { count: number; earliestAt?: number }> = {};
   for (const s of stones) {
     const key = `${s.grade}-${s.subGrade}`;
@@ -223,6 +242,14 @@ export function buildCollection(stones: Stone[]): CollectionEntry[] {
   return ALL_ORE_COMBINATIONS.map(({ grade, subGrade }) => {
     const key = `${grade}-${subGrade}`;
     const group = groups[key];
+    const permanent = discoveredOres[key];
+
+    // Discovered if currently owned OR permanently unlocked
+    const discovered = group !== undefined || permanent !== undefined;
+
+    // Use earliest timestamp from current stones or permanent record
+    const acquiredAt = group?.earliestAt ?? permanent;
+
     return {
       grade,
       subGrade,
@@ -230,8 +257,8 @@ export function buildCollection(stones: Stone[]): CollectionEntry[] {
       label: getStoneGradeLabel(grade, subGrade),
       description: getStoneDescription(grade, subGrade),
       color: STONE_GRADE_COLORS[grade],
-      discovered: group !== undefined,
-      acquiredAt: group?.earliestAt,
+      discovered,
+      acquiredAt,
       count: group?.count ?? 0,
     };
   });
