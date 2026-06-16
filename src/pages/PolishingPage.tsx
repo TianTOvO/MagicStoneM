@@ -1,11 +1,24 @@
 import { useContext, useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { UserDataContext } from '@/contexts/userDataContext';
 import { STONE_GRADE_COLORS, STONE_GRADE_TEXT_COLORS, TOOL_LEVEL_COLORS, TOOL_LEVEL_NAMES, getStoneDisplayName, rollSubGrade, isStonePolishable } from '@/types';
 import { toast } from 'sonner';
+import { trackPolish, trackFirstUpgrade, trackTreasureHunt } from '@/lib/quests';
 import { motion, AnimatePresence } from 'framer-motion';
+
+/** 打磨费用：按矿石等级梯度收费 */
+function getPolishCost(grade: number): number {
+  switch (grade) {
+    case 0: return 0;    // 原石免费
+    case 1: return 300;  // 玛瑙
+    case 2: return 800;  // 翡翠
+    default: return 0;
+  }
+}
 
 export default function PolishingPage() {
   const { userData, updateUserData } = useContext(UserDataContext);
+  const navigate = useNavigate();
   const [selectedStoneId, setSelectedStoneId] = useState<number | null>(null);
   const [selectedToolId, setSelectedToolId] = useState<number | null>(null);
   const [isPolishing, setIsPolishing] = useState(false);
@@ -20,6 +33,9 @@ export default function PolishingPage() {
 
   const selectedStone = polishableStones.find(s => s.id === selectedStoneId) ?? null;
   const selectedTool = usableTools.find(t => t.id === selectedToolId) ?? null;
+
+  // Dynamic polish cost based on stone grade
+  const polishCost = selectedStone ? getPolishCost(selectedStone.grade) : 0;
 
   // Auto-select first items if none selected
   useEffect(() => {
@@ -46,6 +62,10 @@ export default function PolishingPage() {
       toast.error('请选择矿石和工具');
       return;
     }
+    if (polishCost > 0 && userData.coins < polishCost) {
+      toast.error(`打磨需要 ${polishCost} 币，游戏币不足`);
+      return;
+    }
 
     const stoneIdx = userData.stones.findIndex(s => s.id === selectedStone.id);
     const toolIdx = userData.tools.findIndex(t => t.id === selectedTool.id);
@@ -66,15 +86,14 @@ export default function PolishingPage() {
       const newStones = [...userData.stones];
       const newTools = [...userData.tools];
 
-      // Damage increase
-      const damageIncrease = tool.level < 3 ? 10 * (4 - tool.level) : 1;
+      // Use tool's actual lossCoeff and durabilityConsumption
+      const damageIncrease = Math.max(1, Math.floor(10 * tool.lossCoeff));
       newStones[stoneIdx] = {
         ...stone,
         damage: Math.min(stone.damage + damageIncrease, stone.damageLimit),
       };
 
-      // Durability loss
-      const durabilityLoss = tool.level < 3 ? 5 * (4 - tool.level) : 1;
+      const durabilityLoss = Math.max(1, Math.floor(5 * tool.durabilityConsumption));
       newTools[toolIdx] = {
         ...tool,
         durability: Math.max(0, tool.durability - durabilityLoss),
@@ -94,7 +113,14 @@ export default function PolishingPage() {
         resultName = getStoneDisplayName(stone.grade, stone.subGrade);
       }
 
-      updateUserData({ stones: newStones, tools: newTools });
+      // Track quest progress
+      let updatedQuests = trackPolish(userData.quests);
+      if (upgraded && stone.grade === 0 && newStones[stoneIdx].grade === 1) {
+        updatedQuests = trackFirstUpgrade(updatedQuests);
+      }
+      updatedQuests = trackTreasureHunt(updatedQuests, newStones);
+
+      updateUserData({ stones: newStones, tools: newTools, quests: updatedQuests, coins: userData.coins - polishCost });
 
       // Show success animation
       setUpgradeResult({ name: resultName, upgraded });
@@ -117,34 +143,9 @@ export default function PolishingPage() {
     }, 1800);
   };
 
-  // If no stones or tools available
-  if (polishableStones.length === 0 || usableTools.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full min-h-[60vh] text-center px-4">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-3xl p-8 border-2 border-purple-200 shadow-xl max-w-xs w-full"
-        >
-          <i className="fas fa-gem text-5xl text-purple-300 mb-4 block" />
-          <h2 className="text-lg font-black text-gray-800 mb-2">无法打磨</h2>
-          <p className="text-gray-500 text-sm mb-6">
-            {polishableStones.length === 0 ? '没有可打磨的矿石了，去商城购买吧！' : '没有可用的工具了，去商城购买吧！'}
-          </p>
-          <button
-            onClick={() => window.location.href = '/shop'}
-            className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl text-white font-bold active:scale-95 transition-transform"
-          >
-            前往商城
-          </button>
-        </motion.div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col h-full space-y-4">
-      {/* Upgrade result overlay */}
+    <>
+      {/* Upgrade result overlay — always rendered, even when no stones */}
       <AnimatePresence>
         {showSuccess && upgradeResult && (
           <motion.div
@@ -190,6 +191,34 @@ export default function PolishingPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* If no stones or tools available */}
+      {polishableStones.length === 0 || usableTools.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-full min-h-[60vh] text-center px-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl p-8 border-2 border-purple-200 shadow-xl max-w-xs w-full"
+          >
+            <i className="fas fa-gem text-5xl text-purple-300 mb-4 block" />
+            <h2 className="text-lg font-black text-gray-800 mb-2">无法打磨</h2>
+            <p className="text-gray-500 text-sm mb-6">
+              {polishableStones.length === 0 && userData.stones.length > 0
+                ? '当前矿石已达到等级上限或损耗上限，去商城买新矿石吧！'
+                : polishableStones.length === 0
+                  ? '没有可打磨的矿石了，去商城购买吧！'
+                  : '没有可用的工具了，去商城购买吧！'}
+            </p>
+            <button
+              onClick={() => navigate('/shop')}
+              className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl text-white font-bold active:scale-95 transition-transform"
+            >
+              前往商城
+            </button>
+          </motion.div>
+        </div>
+      ) : (
+        <div className="flex flex-col h-full space-y-4">
 
       {/* Main stone display */}
       <motion.div
@@ -290,9 +319,9 @@ export default function PolishingPage() {
       <motion.button
         whileTap={{ scale: 0.96 }}
         onClick={handlePolish}
-        disabled={!selectedStone || !selectedTool || isPolishing}
+        disabled={!selectedStone || !selectedTool || isPolishing || (polishCost > 0 && userData.coins < polishCost)}
         className={`w-full py-4 rounded-2xl font-black text-base transition-all ${
-          !selectedStone || !selectedTool || isPolishing
+          !selectedStone || !selectedTool || isPolishing || (polishCost > 0 && userData.coins < polishCost)
             ? 'bg-gray-200 text-gray-400'
             : 'bg-gradient-to-r from-purple-600 via-pink-500 to-orange-500 text-white shadow-lg shadow-purple-500/30 active:shadow-md'
         }`}
@@ -309,7 +338,7 @@ export default function PolishingPage() {
         ) : (
           <span className="flex items-center justify-center gap-2">
             <i className="fas fa-gem" />
-            {!selectedStone ? '请选择矿石' : !selectedTool ? '请选择工具' : '开始打磨'}
+            {!selectedStone ? '请选择矿石' : !selectedTool ? '请选择工具' : polishCost > 0 && userData.coins < polishCost ? `游戏币不足（需${polishCost}）` : polishCost > 0 ? `开始打磨 · ${polishCost} 币` : '开始打磨 · 免费'}
           </span>
         )}
       </motion.button>
@@ -379,6 +408,8 @@ export default function PolishingPage() {
           ))}
         </div>
       </div>
-    </div>
+      </div>
+      )}
+    </>
   );
 }

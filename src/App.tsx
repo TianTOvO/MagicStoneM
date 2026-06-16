@@ -13,7 +13,6 @@ import LoginPage from "@/pages/LoginPage";
 import NotFoundPage from "@/pages/NotFoundPage";
 import { useState, useEffect, useCallback } from "react";
 import { AuthContext } from '@/contexts/authContext';
-import { ThemeProvider } from '@/contexts/themeContext';
 import { UserDataContext } from '@/contexts/userDataContext';
 import { UserData } from '@/types';
 import { mockUserData } from '@/data/demoUser';
@@ -21,12 +20,36 @@ import { Preferences } from '@capacitor/preferences';
 
 const USER_DATA_KEY = 'magic-stone-mobile-data';
 
+/** Check if we've passed today's 2 AM since last reset */
+function needsDailyReset(lastReset: number): boolean {
+  const now = new Date();
+  const today2am = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 2, 0, 0);
+  // If it's before 2 AM today, use yesterday's 2 AM as the boundary
+  const boundary = now < today2am
+    ? new Date(today2am.getTime() - 86400000)
+    : today2am;
+  return lastReset < boundary.getTime();
+}
+
+/** Reset daily quests (type === '日常') */
+function resetDailyQuests(quests: UserData['quests']): UserData['quests'] {
+  return quests.map(q =>
+    q.type === '日常' ? { ...q, progress: 0, claimed: false } : q
+  );
+}
+
 async function loadUserData(): Promise<UserData> {
   try {
     const result = await Preferences.get({ key: USER_DATA_KEY });
     if (result.value) {
       const parsed = JSON.parse(result.value);
-      return { ...mockUserData, ...parsed };
+      let data = { ...mockUserData, ...parsed };
+      // Check daily reset
+      if (needsDailyReset(data.lastDailyReset || 0)) {
+        data.quests = resetDailyQuests(data.quests);
+        data.lastDailyReset = Date.now();
+      }
+      return data;
     }
   } catch {
     console.warn('Failed to load saved data, using defaults.');
@@ -97,11 +120,10 @@ export default function App() {
   }
 
   return (
-    <ThemeProvider>
-      <AuthContext.Provider
-        value={{ isAuthenticated, setIsAuthenticated, logout }}
-      >
-        <UserDataContext.Provider value={{ userData, updateUserData }}>
+    <AuthContext.Provider
+      value={{ isAuthenticated, setIsAuthenticated, logout }}
+    >
+      <UserDataContext.Provider value={{ userData, updateUserData }}>
           <div className="h-dvh bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50 text-gray-900 flex flex-col relative overflow-hidden">
             {/* Static background decorations */}
             <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden" aria-hidden="true">
@@ -133,6 +155,5 @@ export default function App() {
           </div>
         </UserDataContext.Provider>
       </AuthContext.Provider>
-    </ThemeProvider>
   );
 }

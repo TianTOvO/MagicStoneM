@@ -26,9 +26,9 @@ export function randInt(min: number, max: number, rng: () => number): number {
   return Math.floor(rng() * (max - min + 1)) + min;
 }
 
-/** Current shop window seed (changes every 10 min) */
+/** Current shop window seed (changes every 30 min) */
 export function getShopSeed(): number {
-  return Math.floor(Date.now() / 600000);
+  return Math.floor(Date.now() / 1800000);
 }
 
 /** Current black market window seed (changes every 1 hour) */

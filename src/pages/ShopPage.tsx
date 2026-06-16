@@ -1,10 +1,16 @@
-import { useContext, useState, useEffect, useMemo } from 'react';
+import { useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { UserDataContext } from '@/contexts/userDataContext';
-import { Stone, Tool, STONE_GRADE_COLORS, STONE_GRADE_TEXT_COLORS, TOOL_LEVEL_COLORS, TOOL_LEVEL_NAMES, getStoneDisplayName, getStoneGradeLabel, getStoneDescription } from '@/types';
+import { Stone, Tool, STONE_GRADE_COLORS, STONE_GRADE_TEXT_COLORS, TOOL_LEVEL_COLORS, TOOL_LEVEL_NAMES, getStoneDisplayName, getStoneDescription } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { createRNG, pickN, getShopSeed, getMarketSeed, formatCountdown } from '@/lib/timeRandom';
+import { trackStoneCollection, trackToolMastery, trackShopBuy, trackShopSell, trackTreasureHunt } from '@/lib/quests';
 import { ORE_PRICES, TOOL_PRICES, getOrePrice, getToolPrice, generateMarketPrice, calcStoneSellPrice, calcToolSellPrice } from '@/data/prices';
+
+const SHOP_WINDOW_MS = 1800000; // 30 minutes
+const REFRESH_COST = 1500;
+const MARKET_REFRESH_COST = 20000;
+const SHOP_SLOTS = 6;
 
 type StoreTab = 'shop' | 'market';
 type ShopSubTab = 'buy' | 'sell';
@@ -36,105 +42,165 @@ interface MerchantOffer {
   price: number;
 }
 
-// ==================== Shop buy catalog (fixed prices) ====================
-
-function buildShopBuyItems(): ShopBuyItem[] {
-  const items: ShopBuyItem[] = [];
-
-  for (const o of ORE_PRICES) {
-    const isMysterious = o.name.includes('神秘');
-    items.push({
-      id: `shop-stone-${o.grade}-${o.subGrade}-${isMysterious ? 'm' : 'n'}`,
-      category: 'stone',
-      name: o.name,
-      description: isMysterious ? '蕴含神秘力量的特殊矿石' : getStoneDescription(o.grade, o.subGrade),
-      price: o.shopBuy,
-      grade: o.grade,
-      subGrade: o.subGrade,
-      mysterious: isMysterious,
-    });
-  }
-
-  for (const t of TOOL_PRICES) {
-    items.push({
-      id: `shop-tool-${t.level}`,
-      category: 'tool',
-      name: t.name,
-      description: ['能用就行', '"这个就叫专业~"', '每一次打磨都格外自信', '由传奇工匠打造'][t.level],
-      price: t.shopBuy,
-      level: t.level,
-    });
-  }
-
-  return items;
-}
-
-// ==================== Market generator (60%-200%, independent buy/sell) ====================
-
-function generateMarket(seed: number, tab: MarketSubTab): { buyOrders: MerchantOffer[]; sellOrders: MerchantOffer[] } {
-  const rng = createRNG(seed);
-
-  if (tab === 'stone') {
-    const picked = pickN(ORE_PRICES.filter(o => !o.name.includes('神秘')), 5, rng);
-    const buyOrders: MerchantOffer[] = [];
-    const sellOrders: MerchantOffer[] = [];
-
-    for (const o of picked) {
-      const buyPrice = generateMarketPrice(o.shopBuy, rng);
-      const sellPrice = generateMarketPrice(o.shopBuy, rng);
-      buyOrders.push({
-        id: `m-buy-${o.grade}-${o.subGrade}`,
-        isBuyOrder: true,
-        grade: o.grade, subGrade: o.subGrade,
-        name: o.name,
-        price: buyPrice,
-      });
-      sellOrders.push({
-        id: `m-sell-${o.grade}-${o.subGrade}`,
-        isBuyOrder: false,
-        grade: o.grade, subGrade: o.subGrade,
-        name: o.name,
-        price: sellPrice,
-      });
-    }
-    return { buyOrders, sellOrders };
-  } else {
-    const picked = pickN(TOOL_PRICES, 3, rng);
-    const buyOrders: MerchantOffer[] = [];
-    const sellOrders: MerchantOffer[] = [];
-
-    for (const t of picked) {
-      const buyPrice = generateMarketPrice(t.shopBuy, rng);
-      const sellPrice = generateMarketPrice(t.shopBuy, rng);
-      buyOrders.push({
-        id: `m-buy-tool-${t.level}`,
-        isBuyOrder: true,
-        level: t.level,
-        name: t.name,
-        price: buyPrice,
-      });
-      sellOrders.push({
-        id: `m-sell-tool-${t.level}`,
-        isBuyOrder: false,
-        level: t.level,
-        name: t.name,
-        price: sellPrice,
-      });
-    }
-    return { buyOrders, sellOrders };
-  }
-}
-
-// ==================== Modal Data ====================
-
 interface ModalData {
   title: string;
   name: string;
   description?: string;
   unitPrice: number;
-  isBuy: boolean; // true = player spends coins, false = player earns coins
+  isBuy: boolean;
   maxQty?: number;
   onConfirm: (qty: number) => void;
+}
+
+// ==================== Shop Generator ====================
+
+/** Items eligible for the random 4 slots (excludes top-tier 2-4, 3-4) */
+const RANDOM_ORE_POOL = ORE_PRICES.filter(o => {
+  const key = `${o.grade}-${o.subGrade}`;
+  return key !== '2-4' && key !== '3-4'; // exclude 帝王绿, 非洲之心
+});
+
+const RANDOM_TOOL_POOL = TOOL_PRICES;
+
+function generateShopItems(seed: number): ShopBuyItem[] {
+  const rng = createRNG(seed);
+
+  // Guaranteed: 1 原石 (50% chance 神秘原石)
+  const isMysteryStone = rng() < 0.5;
+  const stoneDef = ORE_PRICES.find(o => o.grade === 0 && o.subGrade === 0 && o.name.includes('神秘') === isMysteryStone)!;
+
+  // Guaranteed: 1 玛瑙 (普通)
+  const agateDef = ORE_PRICES.find(o => o.grade === 1 && o.subGrade === 0 && !o.name.includes('神秘'))!;
+
+  const guaranteed: ShopBuyItem[] = [
+    {
+      id: `shop-guaranteed-stone`,
+      category: 'stone',
+      name: stoneDef.name,
+      description: isMysteryStone ? '蕴含神秘力量的特殊矿石' : getStoneDescription(0, 0),
+      price: stoneDef.shopBuy,
+      grade: 0, subGrade: 0,
+      mysterious: isMysteryStone,
+    },
+    {
+      id: `shop-guaranteed-agate`,
+      category: 'stone',
+      name: agateDef.name,
+      description: getStoneDescription(1, 0),
+      price: agateDef.shopBuy,
+      grade: 1, subGrade: 0,
+      mysterious: false,
+    },
+  ];
+
+  // 4 random slots
+  const remaining = SHOP_SLOTS - guaranteed.length;
+  // Pick from ore pool + tool pool
+  const pool: { type: 'ore'; o: typeof RANDOM_ORE_POOL[0] } | { type: 'tool'; t: typeof RANDOM_TOOL_POOL[0] }[] = [
+    ...RANDOM_ORE_POOL.map(o => ({ type: 'ore' as const, o })),
+    ...RANDOM_TOOL_POOL.map(t => ({ type: 'tool' as const, t })),
+  ];
+
+  // Exclude already-guaranteed items from random pool
+  const filteredPool = pool.filter(p => {
+    if (p.type === 'ore') {
+      if (p.o.grade === 0 && p.o.subGrade === 0) return false; // exclude all 原石 variants
+      if (p.o.grade === 1 && p.o.subGrade === 0 && !p.o.name.includes('神秘')) return false; // exclude 玛瑙
+    }
+    return true;
+  });
+
+  const picked = pickN(filteredPool, remaining, rng);
+  const randomItems: ShopBuyItem[] = picked.map((p, i) => {
+    if (p.type === 'ore') {
+      return {
+        id: `shop-random-ore-${i}`,
+        category: 'stone',
+        name: p.o.name,
+        description: getStoneDescription(p.o.grade, p.o.subGrade),
+        price: p.o.shopBuy,
+        grade: p.o.grade,
+        subGrade: p.o.subGrade,
+        mysterious: p.o.name.includes('神秘'),
+      };
+    } else {
+      return {
+        id: `shop-random-tool-${i}`,
+        category: 'tool',
+        name: p.t.name,
+        description: ['能用就行', '"这个就叫专业~"', '每一次打磨都格外自信', '由传奇工匠打造'][p.t.level],
+        price: p.t.shopBuy,
+        level: p.t.level,
+      };
+    }
+  });
+
+  return [...guaranteed, ...randomItems];
+}
+
+// ==================== Market Generator ====================
+
+function generateMarket(seed: number, tab: MarketSubTab): { buyOrders: MerchantOffer[]; sellOrders: MerchantOffer[] } {
+  // Separate seeds for buy and sell — independent picks and prices
+  const buyRng = createRNG(seed);
+  const sellRng = createRNG(seed + 999);
+
+  if (tab === 'stone') {
+    const pool = ORE_PRICES.filter(o => !o.name.includes('神秘'));
+    const buyPicked = pickN(pool, 5, buyRng);
+    const sellPicked = pickN(pool, 5, sellRng);
+
+    const buyOrders: MerchantOffer[] = buyPicked.map(o => ({
+      id: `m-buy-${o.grade}-${o.subGrade}`,
+      isBuyOrder: true,
+      grade: o.grade, subGrade: o.subGrade,
+      name: o.name,
+      price: generateMarketPrice(o.shopBuy, buyRng),
+    }));
+
+    const sellOrders: MerchantOffer[] = sellPicked.map(o => ({
+      id: `m-sell-${o.grade}-${o.subGrade}`,
+      isBuyOrder: false,
+      grade: o.grade, subGrade: o.subGrade,
+      name: o.name,
+      price: generateMarketPrice(o.shopBuy, sellRng),
+    }));
+
+    // If same item appears in both lists, sync prices to prevent arbitrage
+    for (const buy of buyOrders) {
+      const match = sellOrders.find(s => s.grade === buy.grade && s.subGrade === buy.subGrade);
+      if (match) match.price = buy.price;
+    }
+
+    return { buyOrders, sellOrders };
+  } else {
+    const buyPicked = pickN(TOOL_PRICES, 3, buyRng);
+    const sellPicked = pickN(TOOL_PRICES, 3, sellRng);
+
+    const buyOrders: MerchantOffer[] = buyPicked.map(t => ({
+      id: `m-buy-tool-${t.level}`,
+      isBuyOrder: true,
+      level: t.level,
+      name: t.name,
+      price: generateMarketPrice(t.shopBuy, buyRng),
+    }));
+
+    const sellOrders: MerchantOffer[] = sellPicked.map(t => ({
+      id: `m-sell-tool-${t.level}`,
+      isBuyOrder: false,
+      level: t.level,
+      name: t.name,
+      price: generateMarketPrice(t.shopBuy, sellRng),
+    }));
+
+    // Sync overlapping items
+    for (const buy of buyOrders) {
+      const match = sellOrders.find(s => s.level === buy.level);
+      if (match) match.price = buy.price;
+    }
+
+    return { buyOrders, sellOrders };
+  }
 }
 
 // ==================== Component ====================
@@ -146,9 +212,34 @@ export default function ShopPage() {
   const [shopSubTab, setShopSubTab] = useState<ShopSubTab>('buy');
   const [marketSubTab, setMarketSubTab] = useState<MarketSubTab>('stone');
 
-  // Market seed & countdown
-  const [marketSeed, setMarketSeed] = useState(getMarketSeed());
-  const [countdown, setCountdown] = useState(formatCountdown(3600000));
+  // Shop: time-based seed + manual refresh counter (sessionStorage to survive page switch)
+  const [shopRefreshKey, setShopRefreshKey] = useState(() => {
+    const savedBase = sessionStorage.getItem('shopBaseSeed');
+    const savedKey = sessionStorage.getItem('shopRefreshKey');
+    const curBase = String(getShopSeed());
+    return savedBase === curBase ? (savedKey ? parseInt(savedKey) : 0) : 0;
+  });
+  const shopSeed = getShopSeed() + shopRefreshKey;
+
+  // Shop countdown
+  const [shopCountdown, setShopCountdown] = useState(formatCountdown(SHOP_WINDOW_MS));
+
+  // Market: time-based seed + manual refresh counter
+  const [marketRefreshKey, setMarketRefreshKey] = useState(() => {
+    const savedBase = sessionStorage.getItem('marketBaseSeed');
+    const savedKey = sessionStorage.getItem('marketRefreshKey');
+    const curBase = String(getMarketSeed());
+    return savedBase === curBase ? (savedKey ? parseInt(savedKey) : 0) : 0;
+  });
+  const marketSeed = getMarketSeed() + marketRefreshKey;
+
+  // Track purchased items in current market session (clear on refresh)
+  const [purchasedMarketIds, setPurchasedMarketIds] = useState<Set<string>>(new Set());
+  // Reset purchased tracking when market refreshes
+  useEffect(() => {
+    setPurchasedMarketIds(new Set());
+  }, [marketSeed]);
+  const [marketCountdown, setMarketCountdown] = useState(formatCountdown(3600000));
 
   // Modal
   const [showModal, setShowModal] = useState(false);
@@ -156,24 +247,64 @@ export default function ShopPage() {
   const [quantity, setQuantity] = useState(1);
 
   // Shop data
-  const shopBuyItems = useMemo(() => buildShopBuyItems(), []);
+  const shopBuyItems = useMemo(() => generateShopItems(shopSeed), [shopSeed]);
 
   // Market data
   const market = useMemo(() => generateMarket(marketSeed, marketSubTab), [marketSeed, marketSubTab]);
 
-  // Timer
+  // ---- Timers ----
   useEffect(() => {
-    const t = setInterval(() => setCountdown(formatCountdown(3600000)), 1000);
+    const t = setInterval(() => setShopCountdown(formatCountdown(SHOP_WINDOW_MS)), 1000);
+    return () => clearInterval(t);
+  }, [shopSeed]);
+
+  useEffect(() => {
+    const c = setInterval(() => {
+      const cur = getShopSeed();
+      if (cur + shopRefreshKey !== shopSeed) setShopRefreshKey(0); // natural refresh resets
+    }, 5000);
+    return () => clearInterval(c);
+  }, [shopSeed, shopRefreshKey]);
+
+  useEffect(() => {
+    const t = setInterval(() => setMarketCountdown(formatCountdown(3600000)), 1000);
     return () => clearInterval(t);
   }, [marketSeed]);
 
   useEffect(() => {
     const c = setInterval(() => {
       const cur = getMarketSeed();
-      if (cur !== marketSeed) setMarketSeed(cur);
-    }, 1000);
+      if (cur + marketRefreshKey !== marketSeed) setMarketRefreshKey(0); // natural refresh resets
+    }, 5000);
     return () => clearInterval(c);
-  }, [marketSeed]);
+  }, [marketSeed, marketRefreshKey]);
+
+  // ---- Manual refresh ----
+  const handleRefresh = useCallback(() => {
+    if (userData.coins < REFRESH_COST) {
+      toast.error(`需要 ${REFRESH_COST} 币才能刷新`);
+      return;
+    }
+    updateUserData({ coins: userData.coins - REFRESH_COST });
+    const next = (shopRefreshKey || 0) + 1;
+    sessionStorage.setItem('shopBaseSeed', String(getShopSeed()));
+    sessionStorage.setItem('shopRefreshKey', String(next));
+    setShopRefreshKey(next);
+    toast.success('商城已刷新');
+  }, [userData.coins, updateUserData, shopRefreshKey]);
+
+  const handleMarketRefresh = useCallback(() => {
+    if (userData.coins < MARKET_REFRESH_COST) {
+      toast.error(`需要 ${MARKET_REFRESH_COST.toLocaleString()} 币才能刷新`);
+      return;
+    }
+    updateUserData({ coins: userData.coins - MARKET_REFRESH_COST });
+    const next = (marketRefreshKey || 0) + 1;
+    sessionStorage.setItem('marketBaseSeed', String(getMarketSeed()));
+    sessionStorage.setItem('marketRefreshKey', String(next));
+    setMarketRefreshKey(next);
+    toast.success('黑市商人已刷新');
+  }, [userData.coins, updateUserData, marketRefreshKey]);
 
   // ==================== Shop: Buy ====================
 
@@ -212,10 +343,21 @@ export default function ShopPage() {
           }
         }
 
+        // Track quests
+        let quests = userData.quests;
+        if (item.category === 'stone') {
+          quests = trackStoneCollection(quests, newStones);
+        } else {
+          quests = trackToolMastery(quests, newTools);
+        }
+        quests = trackShopBuy(quests);
+        quests = trackTreasureHunt(quests, newStones);
+
         updateUserData({
           stones: item.category === 'stone' ? newStones : userData.stones,
           tools: item.category === 'tool' ? newTools : userData.tools,
           coins: userData.coins - total,
+          quests,
         });
         toast.success(`购买了 ${qty} 个${item.name}`);
         setShowModal(false);
@@ -235,7 +377,6 @@ export default function ShopPage() {
     level?: number;
     sellPrice: number;
     wearLabel: string;
-    disabled: boolean;
   }
 
   const stoneSellItems: SellItem[] = userData.stones.map(s => {
@@ -244,14 +385,10 @@ export default function ShopPage() {
     const baseSell = op?.shopSell ?? 0;
     const actual = calcStoneSellPrice(baseSell, s.damage, s.damageLimit);
     return {
-      type: 'stone' as const,
-      id: s.id,
-      name,
-      grade: s.grade,
-      subGrade: s.subGrade,
+      type: 'stone' as const, id: s.id, name,
+      grade: s.grade, subGrade: s.subGrade,
       sellPrice: actual,
       wearLabel: `损耗 ${s.damage}/${s.damageLimit}`,
-      disabled: false,
     };
   });
 
@@ -261,37 +398,36 @@ export default function ShopPage() {
     const baseSell = tp?.shopSell ?? 0;
     const actual = calcToolSellPrice(baseSell, t.durability, t.durabilityMax);
     return {
-      type: 'tool' as const,
-      id: t.id,
-      name,
+      type: 'tool' as const, id: t.id, name,
       level: t.level,
       sellPrice: actual,
       wearLabel: `耐久 ${t.durability}/${t.durabilityMax}`,
-      disabled: false,
     };
   });
 
   const sellItems: SellItem[] = [...stoneSellItems, ...toolSellItems];
 
   const openShopSell = (item: SellItem) => {
-    setQuantity(1);
     setModalData({
       title: '出售物品',
       name: item.name,
       description: item.wearLabel,
       unitPrice: item.sellPrice,
-      isBuy: false, // player earns coins
+      isBuy: false,
       maxQty: 1,
       onConfirm: () => {
+        const sellQuests = trackShopSell(userData.quests);
         if (item.type === 'stone') {
           updateUserData({
             stones: userData.stones.filter(s => s.id !== item.id),
             coins: userData.coins + item.sellPrice,
+            quests: sellQuests,
           });
         } else {
           updateUserData({
             tools: userData.tools.filter(t => t.id !== item.id),
             coins: userData.coins + item.sellPrice,
+            quests: sellQuests,
           });
         }
         toast.success(`出售 ${item.name}，获得 ${item.sellPrice} 币`);
@@ -309,27 +445,28 @@ export default function ShopPage() {
       : userData.tools.filter(t => t.level === offer.level).length;
     if (owned === 0) { toast.error('你没有该物品'); return; }
 
-    // Pick the first matching item
     const match = marketSubTab === 'stone'
       ? userData.stones.find(s => s.grade === offer.grade && s.subGrade === offer.subGrade)
       : userData.tools.find(t => t.level === offer.level);
 
-    setQuantity(1);
     setModalData({
       title: '卖给商人',
       name: offer.name,
       unitPrice: offer.price,
       isBuy: false,
       onConfirm: () => {
+        const sellQuests = trackShopSell(userData.quests);
         if (marketSubTab === 'stone' && match) {
           updateUserData({
             stones: userData.stones.filter(s => s.id !== match.id),
             coins: userData.coins + offer.price,
+            quests: sellQuests,
           });
         } else if (marketSubTab === 'tool' && match) {
           updateUserData({
             tools: userData.tools.filter(t => t.id !== match.id),
             coins: userData.coins + offer.price,
+            quests: sellQuests,
           });
         }
         toast.success(`卖出 ${offer.name}，获得 ${offer.price} 币`);
@@ -346,33 +483,38 @@ export default function ShopPage() {
       name: offer.name,
       unitPrice: offer.price,
       isBuy: true,
+      maxQty: 1,
       onConfirm: () => {
-        const total = offer.price;
-        if (userData.coins < total) { toast.error('游戏币不足'); return; }
+        if (userData.coins < offer.price) { toast.error('游戏币不足'); return; }
 
         if (marketSubTab === 'stone') {
+          const newStones = [...userData.stones, {
+            id: Date.now(), grade: offer.grade ?? 0, subGrade: offer.subGrade ?? 0,
+            damage: 0, damageLimit: 100 + Math.floor(Math.random() * 150),
+            mysterious: false, isPolishable: true, acquiredAt: Date.now(),
+          }];
           updateUserData({
-            stones: [...userData.stones, {
-              id: Date.now(), grade: offer.grade ?? 0, subGrade: offer.subGrade ?? 0,
-              damage: 0, damageLimit: 100 + Math.floor(Math.random() * 150),
-              mysterious: false, isPolishable: true, acquiredAt: Date.now(),
-            }],
-            coins: userData.coins - total,
+            stones: newStones,
+            coins: userData.coins - offer.price,
+            quests: trackTreasureHunt(trackStoneCollection(userData.quests, newStones), newStones),
           });
         } else {
           const tp = getToolPrice(offer.level ?? 0);
+          const newTools = [...userData.tools, {
+            id: Date.now(), level: offer.level ?? 0,
+            durability: tp?.durabilityMax ?? 100,
+            durabilityMax: tp?.durabilityMax ?? 100,
+            lossCoeff: tp?.lossCoeff ?? 1,
+            durabilityConsumption: tp?.durabilityConsumption ?? 1,
+          }];
           updateUserData({
-            tools: [...userData.tools, {
-              id: Date.now(), level: offer.level ?? 0,
-              durability: tp?.durabilityMax ?? 100,
-              durabilityMax: tp?.durabilityMax ?? 100,
-              lossCoeff: tp?.lossCoeff ?? 1,
-              durabilityConsumption: tp?.durabilityConsumption ?? 1,
-            }],
-            coins: userData.coins - total,
+            tools: newTools,
+            coins: userData.coins - offer.price,
+            quests: trackToolMastery(userData.quests, newTools),
           });
         }
-        toast.success(`购买 ${offer.name}，花费 ${total} 币`);
+        toast.success(`购买 ${offer.name}，花费 ${offer.price} 币`);
+        setPurchasedMarketIds(prev => new Set([...prev, offer.id]));
         setShowModal(false);
       },
     });
@@ -404,25 +546,37 @@ export default function ShopPage() {
       {/* ==================== SHOP ==================== */}
       {storeTab === 'shop' && (
         <>
-          {/* Balance */}
-          <div className="flex items-center justify-between bg-white rounded-2xl p-3 border border-green-200 shadow-sm">
-            <div className="flex items-center gap-1.5 bg-yellow-50 rounded-full px-3 py-1.5 border border-yellow-200">
-              <i className="fas fa-coins text-yellow-500 text-xs" />
-              <span className="text-sm font-bold text-yellow-700">{userData.coins} 币</span>
+          {/* Timer + Balance + Refresh */}
+          <div className="bg-white rounded-2xl p-3 border border-green-200 shadow-sm space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <i className="fas fa-clock text-green-500 text-xs" />
+                <span className="text-xs text-gray-500">刷新</span>
+                <span className="text-sm font-black text-green-600 tabular-nums">{shopCountdown}</span>
+              </div>
+              <div className="flex items-center gap-1.5 bg-yellow-50 rounded-full px-3 py-1 border border-yellow-200">
+                <i className="fas fa-coins text-yellow-500 text-xs" />
+                <span className="text-sm font-bold text-yellow-700">{userData.coins}</span>
+              </div>
             </div>
-            <span className="text-xs text-gray-400">固定价格</span>
+            <button
+              onClick={handleRefresh}
+              disabled={userData.coins < REFRESH_COST}
+              className="w-full py-2 bg-gradient-to-r from-amber-400 to-orange-400 rounded-xl text-white text-xs font-bold active:scale-95 transition-transform disabled:opacity-40 flex items-center justify-center gap-1"
+            >
+              <i className="fas fa-sync-alt text-[10px]" />
+              立即刷新 · {REFRESH_COST} 币
+            </button>
           </div>
 
           {/* Buy / Sell sub-tab */}
           <div className="flex bg-white/70 rounded-2xl p-1 border border-gray-100">
-            <button
-              onClick={() => setShopSubTab('buy')}
+            <button onClick={() => setShopSubTab('buy')}
               className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${
                 shopSubTab === 'buy' ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-md' : 'text-gray-500'
               }`}
             ><i className="fas fa-shopping-cart mr-1 text-xs" />购买</button>
-            <button
-              onClick={() => setShopSubTab('sell')}
+            <button onClick={() => setShopSubTab('sell')}
               className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${
                 shopSubTab === 'sell' ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-md' : 'text-gray-500'
               }`}
@@ -437,7 +591,7 @@ export default function ShopPage() {
                   key={item.id}
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.03 }}
+                  transition={{ delay: i * 0.04 }}
                   onClick={() => openShopBuy(item)}
                   disabled={userData.coins < item.price}
                   className={`rounded-2xl p-3 border-2 text-left active:scale-95 transition-transform disabled:opacity-40 ${
@@ -449,12 +603,12 @@ export default function ShopPage() {
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-1.5">
-                    <div className={`w-9 h-9 rounded-full flex items-center justify-center ${
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
                       item.category === 'stone'
                         ? STONE_GRADE_COLORS[item.grade ?? 0]
                         : TOOL_LEVEL_COLORS[item.level ?? 0]
-                    } opacity-15`}>
-                      <i className={`fas ${item.category === 'stone' ? 'fa-gem' : 'fa-wrench'} text-sm ${
+                    } opacity-25`}>
+                      <i className={`fas ${item.category === 'stone' ? 'fa-gem' : 'fa-wrench'} text-base ${
                         item.category === 'stone' ? STONE_GRADE_TEXT_COLORS[item.grade ?? 0] : 'text-gray-600'
                       }`} />
                     </div>
@@ -488,12 +642,12 @@ export default function ShopPage() {
                       className="rounded-xl p-3 border-2 bg-white border-orange-200 active:border-orange-400 text-left transition-all"
                     >
                       <div className="flex items-center gap-2 mb-1.5">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                        <div className={`w-9 h-9 rounded-full flex items-center justify-center ${
                           item.type === 'stone'
                             ? STONE_GRADE_COLORS[item.grade ?? 0]
                             : TOOL_LEVEL_COLORS[item.level ?? 0]
-                        } opacity-15`}>
-                          <i className={`fas ${item.type === 'stone' ? 'fa-gem' : 'fa-wrench'} text-xs ${
+                        } opacity-25`}>
+                          <i className={`fas ${item.type === 'stone' ? 'fa-gem' : 'fa-wrench'} text-sm ${
                             item.type === 'stone' ? STONE_GRADE_TEXT_COLORS[item.grade ?? 0] : 'text-gray-600'
                           }`} />
                         </div>
@@ -515,28 +669,34 @@ export default function ShopPage() {
       {/* ==================== MARKET (黑市) ==================== */}
       {storeTab === 'market' && (
         <>
-          {/* Timer */}
-          <div className="flex items-center justify-between bg-gray-900 rounded-2xl p-3 border border-purple-500 shadow-sm text-white">
-            <div className="flex items-center gap-2">
-              <i className="fas fa-mask text-purple-400 text-sm" />
-              <span className="text-xs text-gray-400">商人离开</span>
-              <span className="text-sm font-black text-purple-300 tabular-nums">{countdown}</span>
+          <div className="bg-gray-900 rounded-2xl p-3 border border-purple-500 shadow-sm text-white space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <i className="fas fa-mask text-purple-400 text-sm" />
+                <span className="text-xs text-gray-400">商人离开</span>
+                <span className="text-sm font-black text-purple-300 tabular-nums">{marketCountdown}</span>
+              </div>
+              <div className="flex items-center gap-1.5 bg-yellow-50/10 rounded-full px-3 py-1 border border-yellow-500/20">
+                <i className="fas fa-coins text-yellow-500 text-xs" />
+                <span className="text-sm font-bold text-yellow-400">{userData.coins}</span>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5 bg-yellow-50/10 rounded-full px-3 py-1 border border-yellow-500/20">
-              <i className="fas fa-coins text-yellow-500 text-xs" />
-              <span className="text-sm font-bold text-yellow-400">{userData.coins}</span>
-            </div>
+            <button
+              onClick={handleMarketRefresh}
+              disabled={userData.coins < MARKET_REFRESH_COST}
+              className="w-full py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl text-white text-xs font-bold active:scale-95 transition-transform disabled:opacity-40 flex items-center justify-center gap-1"
+            >
+              <i className="fas fa-sync-alt text-[10px]" />
+              立即刷新 · {MARKET_REFRESH_COST.toLocaleString()} 币
+            </button>
           </div>
 
-          {/* Market sub-tab */}
           <div className="flex gap-2">
             {[
               { key: 'stone' as MarketSubTab, label: '💎 矿石' },
               { key: 'tool' as MarketSubTab, label: '🔧 工具' },
             ].map(t => (
-              <button
-                key={t.key}
-                onClick={() => setMarketSubTab(t.key)}
+              <button key={t.key} onClick={() => setMarketSubTab(t.key)}
                 className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
                   marketSubTab === t.key
                     ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-md'
@@ -546,11 +706,11 @@ export default function ShopPage() {
             ))}
           </div>
 
-          {/* Buy Orders (player sells to merchant) */}
+          {/* Buy Orders */}
           <div>
             <h3 className="text-xs font-bold text-gray-600 mb-2 flex items-center gap-1">
               <span className="bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">求购</span>
-              商人收购 · 区间 60%-200%
+              商人收购 · 60%-200%
             </h3>
             <div className="grid grid-cols-2 gap-2">
               {market.buyOrders.map(o => {
@@ -558,20 +718,17 @@ export default function ShopPage() {
                   ? userData.stones.filter(s => s.grade === o.grade && s.subGrade === o.subGrade).length
                   : userData.tools.filter(t => t.level === o.level).length;
                 return (
-                  <motion.button
-                    key={o.id}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => openMarketSell(o)}
-                    disabled={owned === 0}
+                  <motion.button key={o.id} whileTap={{ scale: 0.95 }}
+                    onClick={() => openMarketSell(o)} disabled={owned === 0}
                     className={`rounded-xl p-3 border-2 text-left transition-all ${
                       owned > 0 ? 'bg-white border-green-300 active:border-green-500' : 'bg-gray-50 border-gray-200 opacity-40'
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-1">
-                      <div className={`w-8 h-8 rounded-full ${
+                      <div className={`w-9 h-9 rounded-full ${
                         marketSubTab === 'stone' ? STONE_GRADE_COLORS[o.grade ?? 0] : TOOL_LEVEL_COLORS[o.level ?? 0]
-                      } opacity-15 flex items-center justify-center`}>
-                        <i className={`fas ${marketSubTab === 'stone' ? 'fa-gem' : 'fa-wrench'} text-xs ${
+                      } opacity-25 flex items-center justify-center`}>
+                        <i className={`fas ${marketSubTab === 'stone' ? 'fa-gem' : 'fa-wrench'} text-sm ${
                           marketSubTab === 'stone' ? STONE_GRADE_TEXT_COLORS[o.grade ?? 0] : 'text-gray-600'
                         }`} />
                       </div>
@@ -587,20 +744,26 @@ export default function ShopPage() {
             </div>
           </div>
 
-          {/* Sell Orders (player buys from merchant) */}
+          {/* Sell Orders */}
           <div>
             <h3 className="text-xs font-bold text-gray-600 mb-2 flex items-center gap-1">
               <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">出售</span>
-              商人出售 · 区间 60%-200%
+              商人出售 · 60%-200%
             </h3>
             <div className="grid grid-cols-2 gap-2">
-              {market.sellOrders.map(o => (
-                <motion.button
-                  key={o.id}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => openMarketBuy(o)}
-                  disabled={userData.coins < o.price}
-                  className="rounded-xl p-3 border-2 bg-white border-red-200 active:border-red-400 text-left transition-all disabled:opacity-40"
+              {market.sellOrders.map(o => {
+                const soldOut = purchasedMarketIds.has(o.id);
+                return (
+                <motion.button key={o.id} whileTap={{ scale: soldOut ? 1 : 0.95 }}
+                  onClick={() => !soldOut && openMarketBuy(o)}
+                  disabled={soldOut}
+                  className={`rounded-xl p-3 border-2 text-left transition-all ${
+                    soldOut
+                      ? 'bg-gray-100 border-gray-200 opacity-40 cursor-not-allowed'
+                      : userData.coins < o.price
+                        ? 'bg-white border-red-100 opacity-60'
+                        : 'bg-white border-red-200 active:border-red-400'
+                  }`}
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <div className={`w-8 h-8 rounded-full ${
@@ -612,11 +775,18 @@ export default function ShopPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-bold text-gray-700 truncate">{o.name}</p>
-                      <p className="text-[10px] text-red-600 font-bold">售价 {o.price.toLocaleString()} 币</p>
+                      {soldOut ? (
+                        <p className="text-[10px] text-gray-400 font-bold">已售罄</p>
+                      ) : (
+                        <p className={`text-[10px] font-bold ${userData.coins < o.price ? 'text-gray-400' : 'text-red-600'}`}>
+                          售价 {o.price.toLocaleString()} 币
+                        </p>
+                      )}
                     </div>
                   </div>
                 </motion.button>
-              ))}
+                );
+              })}
             </div>
           </div>
         </>
@@ -644,37 +814,28 @@ export default function ShopPage() {
                 单价：<span className="font-bold text-purple-600">{modalData.unitPrice.toLocaleString()}</span> 币
               </p>
 
-              {/* Quantity (only when buying from shop, max 10) */}
               {modalData.isBuy && modalData.maxQty !== 1 && (
                 <div className="mb-4">
                   <p className="text-xs font-bold text-gray-600 mb-2">数量</p>
                   <div className="flex items-center gap-3 justify-center">
-                    <button
-                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                      disabled={quantity <= 1}
+                    <button onClick={() => setQuantity(Math.max(1, quantity - 1))} disabled={quantity <= 1}
                       className="w-10 h-10 bg-gray-100 rounded-xl font-bold text-gray-600 disabled:opacity-30 active:scale-90 transition-transform"
                     >−</button>
                     <span className="text-xl font-black w-12 text-center">{quantity}</span>
-                    <button
-                      onClick={() => setQuantity(Math.min(10, quantity + 1))}
-                      disabled={quantity >= 10}
+                    <button onClick={() => setQuantity(Math.min(10, quantity + 1))} disabled={quantity >= 10}
                       className="w-10 h-10 bg-gray-100 rounded-xl font-bold text-gray-600 disabled:opacity-30 active:scale-90 transition-transform"
                     >+</button>
                   </div>
                 </div>
               )}
 
-              {/* Total */}
               <div className={`rounded-2xl p-4 mb-4 flex justify-between items-center ${modalData.isBuy ? 'bg-red-50' : 'bg-green-50'}`}>
-                <span className="text-sm font-bold text-gray-700">
-                  {modalData.isBuy ? '总花费' : '总获得'}
-                </span>
+                <span className="text-sm font-bold text-gray-700">{modalData.isBuy ? '总花费' : '总获得'}</span>
                 <span className={`text-xl font-black ${modalData.isBuy ? 'text-red-600' : 'text-green-600'}`}>
                   {(modalData.unitPrice * quantity).toLocaleString()} 币
                 </span>
               </div>
 
-              {/* Actions */}
               <div className="flex gap-3">
                 <button onClick={() => setShowModal(false)}
                   className="flex-1 py-3 bg-gray-200 rounded-2xl font-bold text-gray-600 active:scale-95 transition-transform"

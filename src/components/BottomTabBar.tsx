@@ -1,13 +1,10 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useContext } from 'react';
-import { UserDataContext } from '@/contexts/userDataContext';
 import { motion } from 'framer-motion';
 
 interface Tab {
   path: string;
   icon: string;
   label: string;
-  badge?: number;
 }
 
 const TABS: Tab[] = [
@@ -21,16 +18,6 @@ const TABS: Tab[] = [
 export default function BottomTabBar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { userData } = useContext(UserDataContext);
-
-  const activeQuests = userData.quests.filter(
-    q => q.progress >= q.target && !q.claimed
-  ).length;
-
-  const getBadge = (tab: Tab): number | undefined => {
-    if (tab.path === '/collection' && activeQuests > 0) return activeQuests;
-    return undefined;
-  };
 
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/';
@@ -43,7 +30,6 @@ export default function BottomTabBar() {
         {TABS.map((tab) => {
           const active = isActive(tab.path);
           const isPolish = tab.path === '/polishing';
-          const badge = getBadge(tab);
 
           return (
             <button
@@ -64,11 +50,6 @@ export default function BottomTabBar() {
                 <>
                   <div className="relative">
                     <i className={`fas ${tab.icon} text-lg`} />
-                    {badge !== undefined && badge > 0 && (
-                      <span className="absolute -top-1.5 -right-3 min-w-[16px] h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
-                        {badge}
-                      </span>
-                    )}
                   </div>
                   <span className="text-[10px] font-bold mt-0.5">{tab.label}</span>
                 </>

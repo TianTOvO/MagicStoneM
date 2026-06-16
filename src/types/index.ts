@@ -46,6 +46,8 @@ export interface UserData {
   quests: Quest[];
   /** 永久图鉴解锁记录：key = "grade-subGrade", value = 首次发现时间戳 */
   discoveredOres: Record<string, number>;
+  /** 上次日常任务重置时间戳，用于每日 2AM 刷新判断 */
+  lastDailyReset: number;
 }
 
 // Market types — matches Market.sol
@@ -209,14 +211,14 @@ export const ALL_ORE_COMBINATIONS: { grade: number; subGrade: number }[] = [
 export const MARKET_REFERENCE_PRICE: Record<string, number> = {
   '0-0': 70,      // 原石
   '1-0': 560,     // 玛瑙
-  '2-1': 1050,    // 糯种翡翠
-  '2-2': 1540,    // 冰种翡翠
-  '2-3': 2450,    // 玻璃种翡翠
-  '2-4': 3850,    // 帝王绿翡翠
-  '3-1': 5600,    // 普通钻石
-  '3-2': 8400,    // 蓝钻
-  '3-3': 12600,   // 粉钻
-  '3-4': 21000,   // 非洲之心
+  '2-1': 1400,    // 糯种翡翠
+  '2-2': 2450,    // 冰种翡翠
+  '2-3': 4200,    // 玻璃种翡翠
+  '2-4': 45500,   // 帝王绿翡翠
+  '3-1': 10500,   // 普通钻石
+  '3-2': 17500,   // 蓝钻
+  '3-3': 28000,   // 粉钻
+  '3-4': 56000,   // 非洲之心
 };
 
 /** 获取矿石的市场参考价 */

@@ -3,6 +3,7 @@ import { UserDataContext } from '@/contexts/userDataContext';
 import { TOOL_LEVEL_NAMES, TOOL_LEVEL_COLORS } from '@/types';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
+import { trackToolMastery, trackFirstCraft } from '@/lib/quests';
 
 export default function ToolCraftPage() {
   const { userData, updateUserData } = useContext(UserDataContext);
@@ -35,7 +36,7 @@ export default function ToolCraftPage() {
       lossCoeff: [1, 0.8, 0.5, 0.2][newLevel],
       durabilityConsumption: [1, 0.8, 0.5, 0.2][newLevel],
     });
-    updateUserData({ tools: newTools });
+    updateUserData({ tools: newTools, quests: trackFirstCraft(trackToolMastery(userData.quests, newTools)) });
     toast.success(`合成成功！获得${TOOL_LEVEL_NAMES[newLevel]}工具`);
     setSelected([]);
   };

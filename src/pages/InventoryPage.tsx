@@ -138,6 +138,11 @@ export default function InventoryPage() {
                       <i className="fas fa-exclamation-circle mr-1" />已达上限
                     </p>
                   )}
+                  {!isFull && stone.grade >= 3 && (
+                    <p className="text-[10px] text-amber-500 font-bold text-center mt-2">
+                      <i className="fas fa-crown mr-1" />最高等级
+                    </p>
+                  )}
                 </motion.div>
               );
             })}
@@ -167,7 +172,7 @@ export default function InventoryPage() {
                 >
                   <div className="relative h-24 flex items-center justify-center mb-3">
                     <div className={`absolute inset-0 rounded-full ${TOOL_LEVEL_COLORS[tool.level]} opacity-15 blur-xl`} />
-                    <i className={`fas fa-wrench text-5xl ${dead ? 'text-gray-400' : 'text-white'}`} />
+                    <i className={`fas fa-wrench text-5xl ${dead ? 'text-gray-400' : 'text-gray-700'}`} />
                   </div>
                   <h4 className="text-sm font-bold text-gray-800 text-center">
                     {TOOL_LEVEL_NAMES[tool.level]}工具

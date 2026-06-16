@@ -26,14 +26,14 @@ export const ORE_PRICES: OrePrice[] = [
   { grade: 0, subGrade: 0, name: '神秘原石',    shopBuy: 500,   shopSell: 350 },
   { grade: 1, subGrade: 0, name: '玛瑙',       shopBuy: 800,   shopSell: 560 },
   { grade: 1, subGrade: 0, name: '神秘玛瑙',    shopBuy: 1200,  shopSell: 840 },
-  { grade: 2, subGrade: 1, name: '糯种翡翠',    shopBuy: 1500,  shopSell: 1050 },
-  { grade: 2, subGrade: 2, name: '冰种翡翠',    shopBuy: 2200,  shopSell: 1540 },
-  { grade: 2, subGrade: 3, name: '玻璃种翡翠',  shopBuy: 3500,  shopSell: 2450 },
-  { grade: 2, subGrade: 4, name: '帝王绿翡翠',  shopBuy: 5500,  shopSell: 3850 },
-  { grade: 3, subGrade: 1, name: '普通钻石',    shopBuy: 8000,  shopSell: 5600 },
-  { grade: 3, subGrade: 2, name: '蓝钻',       shopBuy: 12000, shopSell: 8400 },
-  { grade: 3, subGrade: 3, name: '粉钻',       shopBuy: 18000, shopSell: 12600 },
-  { grade: 3, subGrade: 4, name: '非洲之心',    shopBuy: 30000, shopSell: 21000 },
+  { grade: 2, subGrade: 1, name: '糯种翡翠',    shopBuy: 2000,  shopSell: 1400 },
+  { grade: 2, subGrade: 2, name: '冰种翡翠',    shopBuy: 3500,  shopSell: 2450 },
+  { grade: 2, subGrade: 3, name: '玻璃种翡翠',  shopBuy: 6000,  shopSell: 4200 },
+  { grade: 2, subGrade: 4, name: '帝王绿翡翠',  shopBuy: 65000, shopSell: 45500 },
+  { grade: 3, subGrade: 1, name: '普通钻石',    shopBuy: 15000, shopSell: 10500 },
+  { grade: 3, subGrade: 2, name: '蓝钻',       shopBuy: 25000, shopSell: 17500 },
+  { grade: 3, subGrade: 3, name: '粉钻',       shopBuy: 40000, shopSell: 28000 },
+  { grade: 3, subGrade: 4, name: '非洲之心',    shopBuy: 80000, shopSell: 56000 },
 ];
 
 /** 所有工具的商城定价 */
