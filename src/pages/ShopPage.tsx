@@ -54,10 +54,10 @@ interface ModalData {
 
 // ==================== Shop Generator ====================
 
-/** Items eligible for the random 4 slots (excludes top-tier 2-4, 3-4) */
+/** Items eligible for the random slots (excludes top-tier 非洲之心) */
 const RANDOM_ORE_POOL = ORE_PRICES.filter(o => {
   const key = `${o.grade}-${o.subGrade}`;
-  return key !== '2-4' && key !== '3-4'; // exclude 帝王绿, 非洲之心
+  return key !== '6-4'; // exclude 非洲之心
 });
 
 const RANDOM_TOOL_POOL = TOOL_PRICES;
@@ -65,30 +65,29 @@ const RANDOM_TOOL_POOL = TOOL_PRICES;
 function generateShopItems(seed: number): ShopBuyItem[] {
   const rng = createRNG(seed);
 
-  // Guaranteed: 1 原石 (50% chance 神秘原石)
-  const isMysteryStone = rng() < 0.5;
-  const stoneDef = ORE_PRICES.find(o => o.grade === 0 && o.subGrade === 0 && o.name.includes('神秘') === isMysteryStone)!;
+  // Guaranteed: 1 原石
+  const stoneDef = ORE_PRICES.find(o => o.grade === 0 && o.subGrade === 0)!;
 
-  // Guaranteed: 1 玛瑙 (普通)
-  const agateDef = ORE_PRICES.find(o => o.grade === 1 && o.subGrade === 0 && !o.name.includes('神秘'))!;
+  // Guaranteed: 1 白水晶 (grade 1, subGrade 1)
+  const crystalDef = ORE_PRICES.find(o => o.grade === 1 && o.subGrade === 1)!;
 
   const guaranteed: ShopBuyItem[] = [
     {
       id: `shop-guaranteed-stone`,
       category: 'stone',
       name: stoneDef.name,
-      description: isMysteryStone ? '蕴含神秘力量的特殊矿石' : getStoneDescription(0, 0),
+      description: getStoneDescription(0, 0),
       price: stoneDef.shopBuy,
       grade: 0, subGrade: 0,
-      mysterious: isMysteryStone,
+      mysterious: false,
     },
     {
-      id: `shop-guaranteed-agate`,
+      id: `shop-guaranteed-crystal`,
       category: 'stone',
-      name: agateDef.name,
-      description: getStoneDescription(1, 0),
-      price: agateDef.shopBuy,
-      grade: 1, subGrade: 0,
+      name: crystalDef.name,
+      description: getStoneDescription(1, 1),
+      price: crystalDef.shopBuy,
+      grade: 1, subGrade: 1,
       mysterious: false,
     },
   ];
@@ -105,7 +104,7 @@ function generateShopItems(seed: number): ShopBuyItem[] {
   const filteredPool = pool.filter(p => {
     if (p.type === 'ore') {
       if (p.o.grade === 0 && p.o.subGrade === 0) return false; // exclude all 原石 variants
-      if (p.o.grade === 1 && p.o.subGrade === 0 && !p.o.name.includes('神秘')) return false; // exclude 玛瑙
+      if (p.o.grade === 1 && p.o.subGrade === 1) return false; // exclude 白水晶
     }
     return true;
   });
@@ -285,7 +284,7 @@ export default function ShopPage() {
       toast.error(`需要 ${REFRESH_COST} 币才能刷新`);
       return;
     }
-    updateUserData({ coins: userData.coins - REFRESH_COST });
+    updateUserData(prev => ({ coins: prev.coins - REFRESH_COST }));
     const next = (shopRefreshKey || 0) + 1;
     sessionStorage.setItem('shopBaseSeed', String(getShopSeed()));
     sessionStorage.setItem('shopRefreshKey', String(next));
@@ -298,7 +297,7 @@ export default function ShopPage() {
       toast.error(`需要 ${MARKET_REFRESH_COST.toLocaleString()} 币才能刷新`);
       return;
     }
-    updateUserData({ coins: userData.coins - MARKET_REFRESH_COST });
+    updateUserData(prev => ({ coins: prev.coins - MARKET_REFRESH_COST }));
     const next = (marketRefreshKey || 0) + 1;
     sessionStorage.setItem('marketBaseSeed', String(getMarketSeed()));
     sessionStorage.setItem('marketRefreshKey', String(next));
@@ -316,6 +315,7 @@ export default function ShopPage() {
       description: item.description,
       unitPrice: item.price,
       isBuy: true,
+      maxQty: Math.max(1, Math.floor(userData.coins / item.price)),
       onConfirm: (qty: number) => {
         const total = item.price * qty;
         if (userData.coins < total) { toast.error('游戏币不足'); return; }
@@ -353,12 +353,12 @@ export default function ShopPage() {
         quests = trackShopBuy(quests);
         quests = trackTreasureHunt(quests, newStones);
 
-        updateUserData({
-          stones: item.category === 'stone' ? newStones : userData.stones,
-          tools: item.category === 'tool' ? newTools : userData.tools,
-          coins: userData.coins - total,
+        updateUserData(prev => ({
+          stones: item.category === 'stone' ? newStones : prev.stones,
+          tools: item.category === 'tool' ? newTools : prev.tools,
+          coins: prev.coins - total,
           quests,
-        });
+        }));
         toast.success(`购买了 ${qty} 个${item.name}`);
         setShowModal(false);
       },
@@ -405,7 +405,8 @@ export default function ShopPage() {
     };
   });
 
-  const sellItems: SellItem[] = [...stoneSellItems, ...toolSellItems];
+  const sellItems: SellItem[] = [...stoneSellItems, ...toolSellItems]
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh'));
 
   const openShopSell = (item: SellItem) => {
     setModalData({
@@ -418,17 +419,17 @@ export default function ShopPage() {
       onConfirm: () => {
         const sellQuests = trackShopSell(userData.quests);
         if (item.type === 'stone') {
-          updateUserData({
-            stones: userData.stones.filter(s => s.id !== item.id),
-            coins: userData.coins + item.sellPrice,
+          updateUserData(prev => ({
+            stones: prev.stones.filter(s => s.id !== item.id),
+            coins: prev.coins + item.sellPrice,
             quests: sellQuests,
-          });
+          }));
         } else {
-          updateUserData({
-            tools: userData.tools.filter(t => t.id !== item.id),
-            coins: userData.coins + item.sellPrice,
+          updateUserData(prev => ({
+            tools: prev.tools.filter(t => t.id !== item.id),
+            coins: prev.coins + item.sellPrice,
             quests: sellQuests,
-          });
+          }));
         }
         toast.success(`出售 ${item.name}，获得 ${item.sellPrice} 币`);
         setShowModal(false);
@@ -445,31 +446,37 @@ export default function ShopPage() {
       : userData.tools.filter(t => t.level === offer.level).length;
     if (owned === 0) { toast.error('你没有该物品'); return; }
 
-    const match = marketSubTab === 'stone'
-      ? userData.stones.find(s => s.grade === offer.grade && s.subGrade === offer.subGrade)
-      : userData.tools.find(t => t.level === offer.level);
-
+    setQuantity(1);
     setModalData({
       title: '卖给商人',
       name: offer.name,
       unitPrice: offer.price,
       isBuy: false,
-      onConfirm: () => {
+      maxQty: owned,
+      onConfirm: (qty: number) => {
         const sellQuests = trackShopSell(userData.quests);
-        if (marketSubTab === 'stone' && match) {
-          updateUserData({
-            stones: userData.stones.filter(s => s.id !== match.id),
-            coins: userData.coins + offer.price,
+        if (marketSubTab === 'stone') {
+          const toRemove = new Set(
+            userData.stones
+              .filter(s => s.grade === offer.grade && s.subGrade === offer.subGrade)
+              .slice(0, qty).map(s => s.id)
+          );
+          updateUserData(prev => ({
+            stones: prev.stones.filter(s => !toRemove.has(s.id)),
+            coins: prev.coins + offer.price * qty,
             quests: sellQuests,
-          });
-        } else if (marketSubTab === 'tool' && match) {
-          updateUserData({
-            tools: userData.tools.filter(t => t.id !== match.id),
-            coins: userData.coins + offer.price,
+          }));
+        } else {
+          const toRemove = new Set(
+            userData.tools.filter(t => t.level === offer.level).slice(0, qty).map(t => t.id)
+          );
+          updateUserData(prev => ({
+            tools: prev.tools.filter(t => !toRemove.has(t.id)),
+            coins: prev.coins + offer.price * qty,
             quests: sellQuests,
-          });
+          }));
         }
-        toast.success(`卖出 ${offer.name}，获得 ${offer.price} 币`);
+        toast.success(`卖出 ${qty} 个${offer.name}，获得 ${offer.price * qty} 币`);
         setShowModal(false);
       },
     });
@@ -491,13 +498,13 @@ export default function ShopPage() {
           const newStones = [...userData.stones, {
             id: Date.now(), grade: offer.grade ?? 0, subGrade: offer.subGrade ?? 0,
             damage: 0, damageLimit: 100 + Math.floor(Math.random() * 150),
-            mysterious: false, isPolishable: true, acquiredAt: Date.now(),
+            mysterious: false, isPolishable: false, acquiredAt: Date.now(),
           }];
-          updateUserData({
+          updateUserData(prev => ({
             stones: newStones,
-            coins: userData.coins - offer.price,
+            coins: prev.coins - offer.price,
             quests: trackTreasureHunt(trackStoneCollection(userData.quests, newStones), newStones),
-          });
+          }));
         } else {
           const tp = getToolPrice(offer.level ?? 0);
           const newTools = [...userData.tools, {
@@ -507,11 +514,11 @@ export default function ShopPage() {
             lossCoeff: tp?.lossCoeff ?? 1,
             durabilityConsumption: tp?.durabilityConsumption ?? 1,
           }];
-          updateUserData({
+          updateUserData(prev => ({
             tools: newTools,
-            coins: userData.coins - offer.price,
+            coins: prev.coins - offer.price,
             quests: trackToolMastery(userData.quests, newTools),
-          });
+          }));
         }
         toast.success(`购买 ${offer.name}，花费 ${offer.price} 币`);
         setPurchasedMarketIds(prev => new Set([...prev, offer.id]));
@@ -814,7 +821,7 @@ export default function ShopPage() {
                 单价：<span className="font-bold text-purple-600">{modalData.unitPrice.toLocaleString()}</span> 币
               </p>
 
-              {modalData.isBuy && modalData.maxQty !== 1 && (
+              {(modalData.maxQty ?? 0) > 1 && (
                 <div className="mb-4">
                   <p className="text-xs font-bold text-gray-600 mb-2">数量</p>
                   <div className="flex items-center gap-3 justify-center">
@@ -822,9 +829,15 @@ export default function ShopPage() {
                       className="w-10 h-10 bg-gray-100 rounded-xl font-bold text-gray-600 disabled:opacity-30 active:scale-90 transition-transform"
                     >−</button>
                     <span className="text-xl font-black w-12 text-center">{quantity}</span>
-                    <button onClick={() => setQuantity(Math.min(10, quantity + 1))} disabled={quantity >= 10}
+                    <button
+                      onClick={() => setQuantity(Math.min(modalData.maxQty ?? 10, quantity + 1))}
+                      disabled={quantity >= (modalData.maxQty ?? 10)}
                       className="w-10 h-10 bg-gray-100 rounded-xl font-bold text-gray-600 disabled:opacity-30 active:scale-90 transition-transform"
                     >+</button>
+                    <button
+                      onClick={() => setQuantity(modalData.maxQty ?? 10)}
+                      className="px-3 py-2 bg-gray-100 rounded-xl text-[10px] font-bold text-gray-600 active:scale-90 transition-transform"
+                    >最大</button>
                   </div>
                 </div>
               )}

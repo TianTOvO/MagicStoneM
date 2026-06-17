@@ -13,7 +13,7 @@ const QUEST_LIST: Quest[] = [
   { id: 9, type: '日常', title: '初次合成', description: '合成1次工具', progress: 0, target: 1, reward: 200 },
   { id: 3, type: '成就', title: '首次打磨成功', description: '成功将一块原石升级为玛瑙', progress: 0, target: 1, reward: 100 },
   { id: 4, type: '成就', title: '工具大师', description: '拥有3个专业级别及以上的打磨工具', progress: 0, target: 3, reward: 500 },
-  { id: 5, type: '寻宝', title: '稀世珍品', description: '集齐帝王绿翡翠(2-4)、蓝钻(3-2)和非洲之心(3-4)', progress: 0, target: 1, reward: 20000 },
+  { id: 5, type: '寻宝', title: '稀世珍宝', description: '集齐帝王绿翡翠(5-4)、和田玉(4-4)和非洲之心(6-4)', progress: 0, target: 1, reward: 20000 },
 ];
 
 export default function QuestsPage() {
@@ -32,10 +32,10 @@ export default function QuestsPage() {
     const uq = userData.quests.find(q => q.id === quest.id);
     if (!uq || uq.progress < uq.target) { toast.error('任务尚未完成'); return; }
     if (uq.claimed) { toast.error('奖励已领取'); return; }
-    updateUserData({
-      coins: userData.coins + quest.reward,
-      quests: userData.quests.map(q => q.id === quest.id ? { ...q, claimed: true } : q),
-    });
+    updateUserData(prev => ({
+      coins: prev.coins + quest.reward,
+      quests: prev.quests.map(q => q.id === quest.id ? { ...q, claimed: true } : q),
+    }));
     toast.success(`获得 ${quest.reward} 游戏币！`);
   };
 

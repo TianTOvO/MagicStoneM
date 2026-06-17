@@ -22,18 +22,38 @@ export interface ToolPrice {
 
 /** 所有矿石的商城定价 */
 export const ORE_PRICES: OrePrice[] = [
-  { grade: 0, subGrade: 0, name: '原石',       shopBuy: 100,   shopSell: 70 },
-  { grade: 0, subGrade: 0, name: '神秘原石',    shopBuy: 500,   shopSell: 350 },
-  { grade: 1, subGrade: 0, name: '玛瑙',       shopBuy: 800,   shopSell: 560 },
-  { grade: 1, subGrade: 0, name: '神秘玛瑙',    shopBuy: 1200,  shopSell: 840 },
-  { grade: 2, subGrade: 1, name: '糯种翡翠',    shopBuy: 2000,  shopSell: 1400 },
-  { grade: 2, subGrade: 2, name: '冰种翡翠',    shopBuy: 3500,  shopSell: 2450 },
-  { grade: 2, subGrade: 3, name: '玻璃种翡翠',  shopBuy: 6000,  shopSell: 4200 },
-  { grade: 2, subGrade: 4, name: '帝王绿翡翠',  shopBuy: 65000, shopSell: 45500 },
-  { grade: 3, subGrade: 1, name: '普通钻石',    shopBuy: 15000, shopSell: 10500 },
-  { grade: 3, subGrade: 2, name: '蓝钻',       shopBuy: 25000, shopSell: 17500 },
-  { grade: 3, subGrade: 3, name: '粉钻',       shopBuy: 40000, shopSell: 28000 },
-  { grade: 3, subGrade: 4, name: '非洲之心',    shopBuy: 80000, shopSell: 56000 },
+  // Grade 0: 原石
+  { grade: 0, subGrade: 0, name: '原石',       shopBuy: 100,  shopSell: 70 },
+  // Grade 1: 水晶
+  { grade: 1, subGrade: 1, name: '白水晶',     shopBuy: 400,   shopSell: 280 },
+  { grade: 1, subGrade: 2, name: '紫水晶',     shopBuy: 700,   shopSell: 490 },
+  { grade: 1, subGrade: 3, name: '黄水晶',     shopBuy: 1000,  shopSell: 700 },
+  { grade: 1, subGrade: 4, name: '茶晶',       shopBuy: 1500,  shopSell: 1050 },
+  // Grade 2: 琥珀
+  { grade: 2, subGrade: 1, name: '金珀',       shopBuy: 2500,  shopSell: 1750 },
+  { grade: 2, subGrade: 2, name: '血珀',       shopBuy: 4000,  shopSell: 2800 },
+  { grade: 2, subGrade: 3, name: '蓝珀',       shopBuy: 6000,  shopSell: 4200 },
+  { grade: 2, subGrade: 4, name: '虫珀',       shopBuy: 13000, shopSell: 9100 },
+  // Grade 3: 玛瑙
+  { grade: 3, subGrade: 1, name: '红玛瑙',     shopBuy: 8000,  shopSell: 5600 },
+  { grade: 3, subGrade: 2, name: '绿玛瑙',     shopBuy: 14000, shopSell: 9800 },
+  { grade: 3, subGrade: 3, name: '蓝玛瑙',     shopBuy: 22000, shopSell: 15400 },
+  { grade: 3, subGrade: 4, name: '缠丝玛瑙',   shopBuy: 50000, shopSell: 35000 },
+  // Grade 4: 玉石
+  { grade: 4, subGrade: 1, name: '青玉',       shopBuy: 30000, shopSell: 21000 },
+  { grade: 4, subGrade: 2, name: '碧玉',       shopBuy: 45000, shopSell: 31500 },
+  { grade: 4, subGrade: 3, name: '墨玉',       shopBuy: 65000, shopSell: 45500 },
+  { grade: 4, subGrade: 4, name: '和田玉',     shopBuy: 120000,shopSell: 84000 },
+  // Grade 5: 翡翠
+  { grade: 5, subGrade: 1, name: '糯种翡翠',    shopBuy: 65000, shopSell: 45500 },
+  { grade: 5, subGrade: 2, name: '冰种翡翠',    shopBuy: 90000, shopSell: 63000 },
+  { grade: 5, subGrade: 3, name: '玻璃种翡翠',  shopBuy: 120000,shopSell: 84000 },
+  { grade: 5, subGrade: 4, name: '帝王绿翡翠',  shopBuy: 160000,shopSell: 112000 },
+  // Grade 6: 钻石
+  { grade: 6, subGrade: 1, name: '普通钻石',    shopBuy: 150000,shopSell: 105000 },
+  { grade: 6, subGrade: 2, name: '蓝钻',       shopBuy: 200000,shopSell: 140000 },
+  { grade: 6, subGrade: 3, name: '粉钻',       shopBuy: 260000,shopSell: 182000 },
+  { grade: 6, subGrade: 4, name: '非洲之心',    shopBuy: 330000,shopSell: 231000 },
 ];
 
 /** 所有工具的商城定价 */

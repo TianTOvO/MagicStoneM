@@ -14,7 +14,7 @@ import NotFoundPage from "@/pages/NotFoundPage";
 import { useState, useEffect, useCallback } from "react";
 import { AuthContext } from '@/contexts/authContext';
 import { UserDataContext } from '@/contexts/userDataContext';
-import { UserData } from '@/types';
+import { UserData, rollSubGrade } from '@/types';
 import { mockUserData } from '@/data/demoUser';
 import { Preferences } from '@capacitor/preferences';
 
@@ -44,6 +44,14 @@ async function loadUserData(): Promise<UserData> {
     if (result.value) {
       const parsed = JSON.parse(result.value);
       let data = { ...mockUserData, ...parsed };
+      // Migrate old stones: grade>=1 with subGrade===0 get random subGrade
+      if (data.stones) {
+        data.stones = data.stones.map(s =>
+          s.grade >= 1 && s.subGrade === 0
+            ? { ...s, subGrade: rollSubGrade(s.grade) }
+            : s
+        );
+      }
       // Check daily reset
       if (needsDailyReset(data.lastDailyReset || 0)) {
         data.quests = resetDailyQuests(data.quests);
@@ -83,14 +91,15 @@ export default function App() {
     setIsAuthenticated(false);
   }, []);
 
-  const updateUserData = useCallback((newData: Partial<UserData>) => {
+  const updateUserData = useCallback((newData: Partial<UserData> | ((prev: UserData) => Partial<UserData>)) => {
     setUserData((prev: UserData) => {
-      const next = { ...prev, ...newData };
+      const updates = typeof newData === 'function' ? newData(prev) : newData;
+      const next = { ...prev, ...updates };
 
       // Auto-record newly discovered ore types into permanent collection
-      if (newData.stones) {
+      if (updates.stones) {
         const discovered = { ...(next.discoveredOres || prev.discoveredOres || {}) };
-        for (const s of newData.stones) {
+        for (const s of updates.stones) {
           const key = `${s.grade}-${s.subGrade}`;
           if (!discovered[key]) {
             discovered[key] = s.acquiredAt ?? Date.now();
@@ -99,10 +108,15 @@ export default function App() {
         next.discoveredOres = discovered;
       }
 
-      saveUserData(next);
       return next;
     });
   }, []);
+
+  // Persist to storage on change (debounced)
+  useEffect(() => {
+    const timer = setTimeout(() => saveUserData(userData), 500);
+    return () => clearTimeout(timer);
+  }, [userData]);
 
   if (!isAuthenticated) {
     return <LoginPage setIsAuthenticated={setIsAuthenticated} />;

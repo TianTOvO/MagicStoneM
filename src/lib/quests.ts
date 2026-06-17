@@ -5,7 +5,7 @@ import type { Quest } from '@/types';
 // Called from pages when relevant actions occur
 // ============================================================
 
-/** Increment quest 1 "打磨5次矿石" by 1 */
+/** Increment quest 1 "打磨3次矿石" by 1 */
 export function trackPolish(quests: Quest[]): Quest[] {
   return quests.map(q =>
     q.id === 1 && !q.claimed && q.progress < q.target
@@ -23,9 +23,9 @@ export function trackFirstUpgrade(quests: Quest[]): Quest[] {
   );
 }
 
-/** Check quest 2 "收集3块玛瑙" based on current stone counts */
+/** Check quest 2 "获得2块玛瑙" — now grade 3 */
 export function trackStoneCollection(quests: Quest[], stones: { grade: number }[]): Quest[] {
-  const agateCount = stones.filter(s => s.grade === 1).length;
+  const agateCount = stones.filter(s => s.grade === 3).length;
   return quests.map(q =>
     q.id === 2 && !q.claimed
       ? { ...q, progress: Math.min(agateCount, q.target) }
@@ -70,12 +70,12 @@ export function trackFirstCraft(quests: Quest[]): Quest[] {
   );
 }
 
-/** Check quest 5 "稀世珍品" — must own ALL three: 帝王绿(2-4), 蓝钻(3-2), 非洲之心(3-4) */
+/** Check quest 5 "稀世珍宝" — all three: 帝王绿(5-4), 和田玉(4-4), 非洲之心(6-4) */
 export function trackTreasureHunt(quests: Quest[], stones: { grade: number; subGrade: number }[]): Quest[] {
   const hasAll =
-    stones.some(s => s.grade === 2 && s.subGrade === 4) &&
-    stones.some(s => s.grade === 3 && s.subGrade === 2) &&
-    stones.some(s => s.grade === 3 && s.subGrade === 4);
+    stones.some(s => s.grade === 5 && s.subGrade === 4) &&
+    stones.some(s => s.grade === 4 && s.subGrade === 4) &&
+    stones.some(s => s.grade === 6 && s.subGrade === 4);
   return quests.map(q =>
     q.id === 5 && !q.claimed && hasAll
       ? { ...q, progress: q.target }

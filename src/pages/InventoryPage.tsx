@@ -1,14 +1,18 @@
-import { useContext, useState } from 'react';
+import { useContext, useState, useMemo } from 'react';
 import { UserDataContext } from '@/contexts/userDataContext';
-import { STONE_GRADE_COLORS, STONE_GRADE_NAMES, STONE_GRADE_TEXT_COLORS, TOOL_LEVEL_COLORS, TOOL_LEVEL_NAMES, getStoneDisplayName, getStoneGradeLabel } from '@/types';
+import { STONE_GRADE_COLORS, STONE_GRADE_NAMES, STONE_GRADE_TEXT_COLORS, TOOL_LEVEL_COLORS, TOOL_LEVEL_NAMES, getStoneDisplayName, getStoneGradeLabel, isStonePolishable } from '@/types';
 import { motion } from 'framer-motion';
+import { getOrePrice, getToolPrice } from '@/data/prices';
+
+type SortKey = 'name' | 'grade' | 'value';
 
 export default function InventoryPage() {
   const { userData } = useContext(UserDataContext);
   const [tab, setTab] = useState<'stones' | 'tools'>('stones');
+  const [sortKey, setSortKey] = useState<SortKey>('name');
 
   // Grade distribution
-  const gradeCounts: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
+  const gradeCounts: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
   userData.stones.forEach(s => { gradeCounts[s.grade] = (gradeCounts[s.grade] || 0) + 1; });
   const maxGrade = Math.max(...Object.values(gradeCounts), 1);
 
@@ -16,10 +20,29 @@ export default function InventoryPage() {
   userData.tools.forEach(t => { levelCounts[t.level] = (levelCounts[t.level] || 0) + 1; });
   const maxLevel = Math.max(...Object.values(levelCounts), 1);
 
-  const polishableStones = userData.stones.filter(
-    s => (s.damage ?? 0) < (s.damageLimit ?? 1) && s.grade < 3
-  ).length;
+  const polishableStones = userData.stones.filter(s => isStonePolishable(s)).length;
   const usableTools = userData.tools.filter(t => t.durability > 0).length;
+
+  // Sorted items
+  const sortedStones = useMemo(() => {
+    const arr = [...userData.stones];
+    arr.sort((a, b) => {
+      if (sortKey === 'grade') return a.grade - b.grade || a.subGrade - b.subGrade;
+      if (sortKey === 'value') return (getOrePrice(b.grade, b.subGrade)?.shopSell ?? 0) - (getOrePrice(a.grade, a.subGrade)?.shopSell ?? 0);
+      return getStoneDisplayName(a.grade, a.subGrade).localeCompare(getStoneDisplayName(b.grade, b.subGrade), 'zh');
+    });
+    return arr;
+  }, [userData.stones, sortKey]);
+
+  const sortedTools = useMemo(() => {
+    const arr = [...userData.tools];
+    arr.sort((a, b) => {
+      if (sortKey === 'grade') return a.level - b.level;
+      if (sortKey === 'value') return (getToolPrice(b.level)?.shopSell ?? 0) - (getToolPrice(a.level)?.shopSell ?? 0);
+      return TOOL_LEVEL_NAMES[a.level].localeCompare(TOOL_LEVEL_NAMES[b.level], 'zh');
+    });
+    return arr;
+  }, [userData.tools, sortKey]);
 
   return (
     <div className="space-y-4">
@@ -49,12 +72,27 @@ export default function InventoryPage() {
         </button>
       </div>
 
+      {/* Sort */}
+      <div className="flex gap-1.5">
+        {([
+          { key: 'name' as SortKey, label: '名称' },
+          { key: 'grade' as SortKey, label: '等级' },
+          { key: 'value' as SortKey, label: '价值' },
+        ]).map(s => (
+          <button key={s.key} onClick={() => setSortKey(s.key)}
+            className={`text-[10px] font-bold px-3 py-1 rounded-full transition-all ${
+              sortKey === s.key ? 'bg-purple-500 text-white' : 'bg-white text-gray-500 border border-gray-200'
+            }`}
+          >{s.label}</button>
+        ))}
+      </div>
+
       {/* Distribution bar */}
       <div className="bg-white rounded-2xl p-4 border border-purple-100 shadow-sm">
         <h3 className="text-xs font-bold text-gray-500 mb-3">等级分布</h3>
         <div className="grid grid-cols-4 gap-2">
           {(tab === 'stones'
-            ? [0, 1, 2, 3].map(g => ({ key: g, label: STONE_GRADE_NAMES[g], count: gradeCounts[g], max: maxGrade, color: STONE_GRADE_COLORS[g] }))
+            ? [0, 1, 2, 3, 4, 5, 6].map(g => ({ key: g, label: STONE_GRADE_NAMES[g], count: gradeCounts[g], max: maxGrade, color: STONE_GRADE_COLORS[g] }))
             : [0, 1, 2, 3].map(l => ({ key: l, label: TOOL_LEVEL_NAMES[l], count: levelCounts[l], max: maxLevel, color: TOOL_LEVEL_COLORS[l] }))
           ).map(item => (
             <div key={item.key} className="text-center">
@@ -95,7 +133,7 @@ export default function InventoryPage() {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3">
-            {userData.stones.map((stone) => {
+            {sortedStones.map((stone) => {
               const isFull = (stone.damage ?? 0) >= (stone.damageLimit ?? 1);
               return (
                 <motion.div
@@ -126,7 +164,7 @@ export default function InventoryPage() {
                   <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
                     <div
                       className={`h-full rounded-full ${isFull ? 'bg-red-400' : 'bg-gradient-to-r from-blue-400 to-cyan-400'}`}
-                      style={{ width: `${(stone.damage / stone.damageLimit) * 100}%` }}
+                      style={{ width: `${(stone.damage / (stone.damageLimit || 1)) * 100}%` }}
                     />
                   </div>
                   <div className="flex justify-between mt-1">
@@ -138,7 +176,7 @@ export default function InventoryPage() {
                       <i className="fas fa-exclamation-circle mr-1" />已达上限
                     </p>
                   )}
-                  {!isFull && stone.grade >= 3 && (
+                  {!isFull && stone.grade >= 6 && (
                     <p className="text-[10px] text-amber-500 font-bold text-center mt-2">
                       <i className="fas fa-crown mr-1" />最高等级
                     </p>
@@ -157,7 +195,7 @@ export default function InventoryPage() {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3">
-            {userData.tools.map((tool) => {
+            {sortedTools.map((tool) => {
               const dead = tool.durability <= 0;
               return (
                 <motion.div
@@ -183,7 +221,7 @@ export default function InventoryPage() {
                   <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
                     <div
                       className={`h-full rounded-full ${dead ? 'bg-red-400' : 'bg-gradient-to-r from-green-400 to-emerald-400'}`}
-                      style={{ width: `${(tool.durability / tool.durabilityMax) * 100}%` }}
+                      style={{ width: `${(tool.durability / (tool.durabilityMax || 1)) * 100}%` }}
                     />
                   </div>
                   <div className="flex justify-between mt-1">

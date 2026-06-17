@@ -1,6 +1,7 @@
 import { useContext, useState } from 'react';
 import { UserDataContext } from '@/contexts/userDataContext';
 import { TOOL_LEVEL_NAMES, TOOL_LEVEL_COLORS } from '@/types';
+import { TOOL_PRICES } from '@/data/prices';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { trackToolMastery, trackFirstCraft } from '@/lib/quests';
@@ -31,12 +32,13 @@ export default function ToolCraftPage() {
     if (!canCraft || selectedLevel === null) return;
     const newLevel = selectedLevel + 1;
     const newTools = userData.tools.filter(t => !selected.includes(t.id));
+    const tp = TOOL_PRICES[newLevel];
     newTools.push({
-      id: Date.now(), level: newLevel, durability: 100, durabilityMax: 100,
-      lossCoeff: [1, 0.8, 0.5, 0.2][newLevel],
-      durabilityConsumption: [1, 0.8, 0.5, 0.2][newLevel],
+      id: Date.now(), level: newLevel,
+      durability: tp.durabilityMax, durabilityMax: tp.durabilityMax,
+      lossCoeff: tp.lossCoeff, durabilityConsumption: tp.durabilityConsumption,
     });
-    updateUserData({ tools: newTools, quests: trackFirstCraft(trackToolMastery(userData.quests, newTools)) });
+    updateUserData(prev => ({ tools: newTools, quests: trackFirstCraft(trackToolMastery(prev.quests, newTools)) }));
     toast.success(`合成成功！获得${TOOL_LEVEL_NAMES[newLevel]}工具`);
     setSelected([]);
   };
