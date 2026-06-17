@@ -1,31 +1,28 @@
 import { useContext, useState } from 'react';
 import { UserDataContext } from '@/contexts/userDataContext';
 import { TOOL_LEVEL_NAMES, TOOL_LEVEL_COLORS } from '@/types';
+import { TOOL_PRICES } from '@/data/prices';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
+import { trackToolMastery, trackFirstCraft } from '@/lib/quests';
 
 export default function ToolCraftPage() {
   const { userData, updateUserData } = useContext(UserDataContext);
-  const [selectedTools, setSelectedTools] = useState<number[]>([]);
+  const [selected, setSelected] = useState<number[]>([]);
 
   const toolsByLevel: Record<number, typeof userData.tools> = { 0: [], 1: [], 2: [], 3: [] };
-  userData.tools.forEach(t => {
-    if (toolsByLevel[t.level]) toolsByLevel[t.level].push(t);
-  });
+  userData.tools.forEach(t => { if (toolsByLevel[t.level]) toolsByLevel[t.level].push(t); });
 
-  const toggleTool = (id: number) => {
-    if (selectedTools.includes(id)) {
-      setSelectedTools(prev => prev.filter(t => t !== id));
-    } else if (selectedTools.length < 3) {
-      setSelectedTools(prev => [...prev, id]);
-    }
+  const toggle = (id: number) => {
+    if (selected.includes(id)) setSelected(prev => prev.filter(t => t !== id));
+    else if (selected.length < 3) setSelected(prev => [...prev, id]);
   };
 
-  const selectedLevel = selectedTools.length === 3
+  const selectedLevel = selected.length === 3
     ? (() => {
-        const tools = selectedTools.map(id => userData.tools.find(t => t.id === id)!);
+        const tools = selected.map(id => userData.tools.find(t => t.id === id)!);
         const levels = new Set(tools.map(t => t.level));
-        return levels.size === 1 ? tools[0].level : -1;
+        return levels.size === 1 ? levels.values().next().value! : -1;
       })()
     : null;
 
@@ -33,117 +30,103 @@ export default function ToolCraftPage() {
 
   const handleCraft = () => {
     if (!canCraft || selectedLevel === null) return;
-
-    const newTools = userData.tools.filter(t => !selectedTools.includes(t.id));
     const newLevel = selectedLevel + 1;
-
+    const newTools = userData.tools.filter(t => !selected.includes(t.id));
+    const tp = TOOL_PRICES[newLevel];
     newTools.push({
-      id: Date.now(),
-      level: newLevel,
-      durability: 100,
-      durabilityMax: 100,
-      lossCoeff: [1, 0.8, 0.5, 0.2][newLevel],
-      durabilityConsumption: [1, 0.8, 0.5, 0.2][newLevel],
+      id: Date.now(), level: newLevel,
+      durability: tp.durabilityMax, durabilityMax: tp.durabilityMax,
+      lossCoeff: tp.lossCoeff, durabilityConsumption: tp.durabilityConsumption,
     });
-
-    updateUserData({ tools: newTools });
-    toast.success(`合成成功！获得了${TOOL_LEVEL_NAMES[newLevel]}工具`);
-    setSelectedTools([]);
-  };
-
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: { opacity: 1, transition: { staggerChildren: 0.1 } },
-  };
-
-  const itemVariants = {
-    hidden: { y: 20, opacity: 0 },
-    visible: { y: 0, opacity: 1 },
+    updateUserData(prev => ({ tools: newTools, quests: trackFirstCraft(trackToolMastery(prev.quests, newTools)) }));
+    toast.success(`合成成功！获得${TOOL_LEVEL_NAMES[newLevel]}工具`);
+    setSelected([]);
   };
 
   return (
-    <div className="space-y-6">
-      <motion.div
-        initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
-        className="bg-gradient-to-r from-orange-50 via-red-50 to-pink-50 rounded-2xl p-8 border-2 border-orange-200 shadow-xl"
-      >
-        <h1 className="text-4xl font-black mb-2 bg-clip-text text-transparent bg-gradient-to-r from-orange-600 via-red-600 to-pink-600">⚒️ 工具合成</h1>
-        <p className="text-gray-700 text-lg font-medium">3个同等级工具合成1个更高等级工具</p>
-      </motion.div>
-
-      <motion.div
-        variants={containerVariants} initial="hidden" animate="visible"
-        className="bg-gradient-to-br from-orange-50 to-red-50 rounded-2xl p-6 border-2 border-orange-300 shadow-lg"
-      >
-        <h2 className="text-xl font-bold mb-4 text-gray-800">
-          选择3个<span className="text-orange-600 ml-1">同等级</span>工具进行合成
-          {selectedTools.length > 0 && <span className="text-sm font-normal text-gray-500 ml-2">（已选 {selectedTools.length}/3）</span>}
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-black text-gray-800">
+          <i className="fas fa-layer-group text-orange-500 mr-2" />工具合成
         </h2>
+        {selected.length > 0 && (
+          <span className="text-xs font-bold text-purple-600 bg-purple-50 rounded-full px-3 py-1">
+            已选 {selected.length}/3
+          </span>
+        )}
+      </div>
 
-        {[0, 1, 2, 3].map(level => {
-          const tools = toolsByLevel[level];
-          if (tools.length === 0) return null;
-          return (
-            <div key={level} className="mb-6">
-              <h3 className="font-bold text-gray-700 mb-3 flex items-center">
-                <span className={`inline-block w-3 h-3 rounded-full ${TOOL_LEVEL_COLORS[level]} mr-2`}></span>
-                {TOOL_LEVEL_NAMES[level]}工具 ({tools.length}个)
-                {level < 3 && tools.length >= 3 && <span className="text-xs text-orange-500 ml-2">— 可合成</span>}
-              </h3>
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
-                {tools.map(tool => (
-                  <motion.div
-                    key={tool.id}
-                    variants={itemVariants}
-                    onClick={() => toggleTool(tool.id)}
-                    className={`rounded-xl p-3 cursor-pointer border-2 transition-all duration-150 hover:scale-105 ${
-                      selectedTools.includes(tool.id)
-                        ? 'bg-gradient-to-br from-orange-400 to-red-400 border-orange-600 shadow-lg scale-105'
-                        : 'bg-gradient-to-br from-gray-50 to-gray-100 border-gray-300 hover:border-orange-400'
-                    }`}
-                  >
-                    <div className="relative h-16 flex items-center justify-center mb-2">
-                      <div className={`absolute inset-0 rounded-full ${TOOL_LEVEL_COLORS[tool.level]} ${selectedTools.includes(tool.id) ? 'opacity-0' : 'opacity-20'} blur-lg`} />
-                      <i className={`fas fa-wrench text-3xl ${selectedTools.includes(tool.id) ? 'text-white' : 'text-gray-600'}`} />
-                    </div>
-                    <p className={`text-xs font-bold text-center ${selectedTools.includes(tool.id) ? 'text-white' : 'text-gray-800'}`}>
-                      {TOOL_LEVEL_NAMES[tool.level]}
-                    </p>
-                    <p className={`text-xs text-center ${selectedTools.includes(tool.id) ? 'text-orange-100' : 'text-gray-500'}`}>
-                      {tool.durability}/{tool.durabilityMax}
-                    </p>
-                  </motion.div>
-                ))}
-              </div>
+      {/* Rule card */}
+      <div className="bg-white rounded-2xl p-4 border border-orange-200 shadow-sm">
+        <p className="text-sm font-bold text-gray-700 mb-0.5">合成规则</p>
+        <p className="text-xs text-gray-500">3个同等级工具 → 1个更高等级工具（最高可合成至传奇）</p>
+      </div>
+
+      {[0, 1, 2, 3].map(level => {
+        const tools = toolsByLevel[level];
+        if (tools.length === 0) return null;
+        return (
+          <div key={level}>
+            <div className="flex items-center gap-2 mb-2">
+              <div className={`w-2.5 h-2.5 rounded-full ${TOOL_LEVEL_COLORS[level]}`} />
+              <h4 className="text-xs font-bold text-gray-700">{TOOL_LEVEL_NAMES[level]}工具 · {tools.length}个</h4>
+              {level < 3 && tools.length >= 3 && (
+                <span className="text-[10px] text-orange-500 font-bold bg-orange-50 rounded-full px-2 py-0.5">可合成</span>
+              )}
             </div>
-          );
-        })}
-
-        {canCraft && selectedLevel !== null && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-            className="mt-6 bg-gradient-to-r from-orange-100 to-red-100 rounded-xl p-5 border-2 border-orange-400 text-center"
-          >
-            <p className="text-lg font-bold text-gray-800 mb-2">
-              合成 {TOOL_LEVEL_NAMES[selectedLevel + 1]}工具
-            </p>
-            <p className="text-sm text-gray-600 mb-4">
-              消耗 3个{TOOL_LEVEL_NAMES[selectedLevel]}工具 → 1个{TOOL_LEVEL_NAMES[selectedLevel + 1]}工具
-            </p>
-            <button onClick={handleCraft}
-              className="px-8 py-3 bg-gradient-to-r from-orange-600 to-red-600 rounded-xl text-white font-bold hover:scale-105 transition-all shadow-lg"
-            >
-              <i className="fas fa-layer-group mr-2"></i>确认合成
-            </button>
-          </motion.div>
-        )}
-
-        {selectedTools.length === 3 && !canCraft && (
-          <div className="mt-4 text-center text-red-500 font-semibold">
-            <i className="fas fa-exclamation-triangle mr-1"></i>
-            {selectedLevel === -1 ? '所选工具等级不一致' : '传奇工具已是最高等级，无法继续合成'}
+            <div className="grid grid-cols-4 gap-2">
+              {tools.map(tool => (
+                <motion.button
+                  key={tool.id}
+                  whileTap={{ scale: 0.92 }}
+                  onClick={() => toggle(tool.id)}
+                  className={`rounded-xl p-2.5 border-2 transition-all ${
+                    selected.includes(tool.id)
+                      ? 'bg-gradient-to-br from-orange-400 to-red-400 border-orange-500 shadow-lg'
+                      : 'bg-white border-gray-200 active:border-orange-300'
+                  }`}
+                >
+                  <div className="relative h-14 flex items-center justify-center mb-1">
+                    <div className={`absolute inset-0 rounded-full ${TOOL_LEVEL_COLORS[tool.level]} ${selected.includes(tool.id) ? 'opacity-0' : 'opacity-10'} blur-md`} />
+                    <i className={`fas fa-wrench text-2xl ${selected.includes(tool.id) ? 'text-white' : 'text-gray-600'}`} />
+                  </div>
+                  <p className={`text-[10px] font-bold text-center ${selected.includes(tool.id) ? 'text-white' : 'text-gray-700'}`}>
+                    {TOOL_LEVEL_NAMES[tool.level]}
+                  </p>
+                  <p className={`text-[9px] text-center ${selected.includes(tool.id) ? 'text-orange-100' : 'text-gray-400'}`}>
+                    {tool.durability}/{tool.durabilityMax}
+                  </p>
+                </motion.button>
+              ))}
+            </div>
           </div>
-        )}
-      </motion.div>
+        );
+      })}
+
+      {canCraft && selectedLevel !== null && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-gradient-to-r from-orange-50 to-red-50 rounded-2xl p-5 border-2 border-orange-300 text-center"
+        >
+          <p className="text-sm font-bold text-gray-800 mb-1">
+            3×{TOOL_LEVEL_NAMES[selectedLevel]} → 1×{TOOL_LEVEL_NAMES[selectedLevel + 1]}
+          </p>
+          <button
+            onClick={handleCraft}
+            className="mt-3 w-full py-3 bg-gradient-to-r from-orange-600 to-red-600 rounded-2xl text-white font-bold active:scale-95 transition-transform shadow-lg"
+          >
+            <i className="fas fa-layer-group mr-2" />确认合成
+          </button>
+        </motion.div>
+      )}
+
+      {selected.length === 3 && !canCraft && (
+        <p className="text-center text-red-500 text-xs font-bold bg-red-50 rounded-xl py-2">
+          <i className="fas fa-exclamation-triangle mr-1" />
+          {selectedLevel === -1 ? '所选工具等级不一致，请选择同等级工具' : '传奇工具已是最高等级'}
+        </p>
+      )}
     </div>
   );
 }

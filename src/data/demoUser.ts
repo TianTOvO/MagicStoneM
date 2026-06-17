@@ -1,30 +1,39 @@
 import { UserData } from '@/types';
 
-// 模拟用户数据（用于开发和演示）
+const now = Date.now();
+
+// 初始数据 — 纯新手状态
 export const mockUserData: UserData = {
   stones: [
-    { id: 1, grade: 0, subGrade: 0, damage: 10, damageLimit: 100, mysterious: false, isPolishable: true, acquiredAt: Date.now() - 86400000 * 7 },
-    { id: 2, grade: 1, subGrade: 0, damage: 5, damageLimit: 80, mysterious: false, isPolishable: true, acquiredAt: Date.now() - 86400000 * 5 },
-    { id: 3, grade: 2, subGrade: 3, damage: 0, damageLimit: 150, mysterious: false, isPolishable: true, acquiredAt: Date.now() - 86400000 * 3 },
-    { id: 4, grade: 0, subGrade: 0, damage: 90, damageLimit: 90, mysterious: true, isPolishable: false, acquiredAt: Date.now() - 86400000 * 10 },
-    { id: 5, grade: 3, subGrade: 4, damage: 8, damageLimit: 200, mysterious: false, isPolishable: true, acquiredAt: Date.now() - 86400000 },
+    { id: 1, grade: 0, subGrade: 0, damage: 0, damageLimit: 100, mysterious: false, isPolishable: true, acquiredAt: now - 60000 },
+    { id: 2, grade: 0, subGrade: 0, damage: 0, damageLimit: 110, mysterious: false, isPolishable: true, acquiredAt: now - 30000 },
+    { id: 3, grade: 0, subGrade: 0, damage: 0, damageLimit: 95,  mysterious: false, isPolishable: true, acquiredAt: now },
   ],
   tools: [
     { id: 1, level: 0, durability: 100, durabilityMax: 100, lossCoeff: 1, durabilityConsumption: 1 },
     { id: 2, level: 0, durability: 100, durabilityMax: 100, lossCoeff: 1, durabilityConsumption: 1 },
-    { id: 3, level: 0, durability: 100, durabilityMax: 100, lossCoeff: 1, durabilityConsumption: 1 },
-    { id: 4, level: 1, durability: 80, durabilityMax: 100, lossCoeff: 0.8, durabilityConsumption: 0.8 },
-    { id: 5, level: 1, durability: 100, durabilityMax: 100, lossCoeff: 0.8, durabilityConsumption: 0.8 },
-    { id: 6, level: 2, durability: 90, durabilityMax: 100, lossCoeff: 0.5, durabilityConsumption: 0.5 },
-    { id: 7, level: 0, durability: 100, durabilityMax: 100, lossCoeff: 1, durabilityConsumption: 1 },
-    { id: 8, level: 0, durability: 100, durabilityMax: 100, lossCoeff: 1, durabilityConsumption: 1 },
-    { id: 9, level: 3, durability: 140, durabilityMax: 150, lossCoeff: 0.2, durabilityConsumption: 0.2 },
-    { id: 10, level: 2, durability: 100, durabilityMax: 100, lossCoeff: 0.5, durabilityConsumption: 0.5 },
   ],
-  coins: 1000,
+  coins: 2000,
+  discoveredOres: {
+    '0-0': now,
+  },
   quests: [
-    { id: 1, type: '日常', title: '打磨5次矿石', progress: 0, target: 5, reward: 100 },
-    { id: 2, type: '日常', title: '收集3块玛瑙', progress: 0, target: 3, reward: 200 },
-    { id: 3, type: '成就', title: '首次打磨成功', progress: 0, target: 1, reward: 50 }
-  ]
+    { id: 1, type: '日常', title: '打磨3次矿石',   description: '打磨任意矿石3次',           target: 3,  progress: 0, reward: 150 },
+    { id: 2, type: '日常', title: '获得2块玛瑙',   description: '通过打磨或购买获得2块玛瑙',   target: 2,  progress: 0, reward: 300 },
+    { id: 7, type: '日常', title: '商城购物',      description: '在商城购买任意物品1次',        target: 1,  progress: 0, reward: 100 },
+    { id: 8, type: '日常', title: '清理背包',      description: '出售任意物品1次',              target: 1,  progress: 0, reward: 100 },
+    { id: 9, type: '日常', title: '初次合成',      description: '合成1次工具',                  target: 1,  progress: 0, reward: 200 },
+    { id: 3, type: '成就', title: '首次打磨成功',   description: '成功将原石升级为玛瑙',        target: 1,  progress: 0, reward: 100 },
+    { id: 4, type: '成就', title: '工具大师',      description: '拥有3个专业级及以上工具',      target: 3,  progress: 0, reward: 500 },
+    { id: 5, type: '寻宝', title: '稀世珍宝',      description: '集齐帝王绿翡翠、和田玉和非洲之心',  target: 1,  progress: 0, reward: 20000 },
+  ],
+  lastDailyReset: now,
+  mineLevel: 1,
+  workbenchBuffer: [],
+  mineLastCollect: now,
+  workbenchLevel: 1,
+  autoPolishLastTime: now,
+  workbenchBoundToolId: null,
+  autoPolishMinGrade: 0,
+  autoPolishMaxGrade: 0,
 };
